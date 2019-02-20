@@ -45,13 +45,21 @@ pub struct AggregatePublicKey {
     public_keys: Vec<PublicKey>,
 }
 
+impl From<Vec<PublicKey>> for AggregatePublicKey {
+    fn from(keys: Vec<PublicKey>) -> Self {
+        AggregatePublicKey {
+            public_keys: keys,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AggregateSignature<M: Eq> {
     signatures: HashMap<PublicKey, Signature<M>>,
 }
 
 impl<M: Eq> AggregateSignature<M> {
-    pub fn verify_single(&self, public_keys: AggregatePublicKey, message: &M) -> bool {
+    pub fn verify_single(&self, public_keys: &AggregatePublicKey, message: &M) -> bool {
         for public_key in public_keys.public_keys.iter() {
             let signature = self.signatures.get(public_key);
             if let Some(signature) = signature {
@@ -65,7 +73,7 @@ impl<M: Eq> AggregateSignature<M> {
         true
     }
 
-    pub fn verify_multiple(&self, public_keys: AggregatePublicKey, messages: &[M]) -> bool {
+    pub fn verify_multiple(&self, public_keys: &AggregatePublicKey, messages: &[M]) -> bool {
         for (public_key, message) in public_keys.public_keys.iter().zip(messages) {
             let signature = self.signatures.get(public_key);
             if let Some(signature) = signature {

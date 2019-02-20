@@ -3,6 +3,7 @@ use simulator::Event as SimulatorEvent;
 use simulator::Node;
 use simulator::Time;
 
+use crate::actors::MetricsEventType;
 use crate::actors::Timing;
 use crate::datastructures::block::Block;
 use crate::datastructures::block::BlockType;
@@ -25,7 +26,7 @@ pub struct HonestActor {
 
 impl Node for HonestActor {
     type EventType = Event;
-    type MetricsEventType = ();
+    type MetricsEventType = MetricsEventType;
 
     fn run(&mut self, event: SimulatorEvent<Self::EventType>, env: Environment<Self::EventType, Self::MetricsEventType>) -> bool {
         match event.inner() {

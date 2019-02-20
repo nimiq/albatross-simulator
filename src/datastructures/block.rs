@@ -44,62 +44,62 @@ pub enum BlockHeader {
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct MacroDigest {
-    validators: Vec<PublicKey>,
-    parent_macro_hash: Hash,
-    block_number: u32,
-    view_change_number: u16,
+    pub validators: Vec<PublicKey>,
+    pub parent_macro_hash: Hash,
+    pub block_number: u32,
+    pub view_number: u16,
 }
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct MicroDigest {
-    validator: PublicKey,
-    block_number: u32,
-    view_change_number: u16,
+    pub validator: PublicKey,
+    pub block_number: u32,
+    pub view_number: u16,
 }
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct MacroHeader {
-    parent_hash: Hash,
-    digest: MacroDigest,
-    extrinsics_root: Hash,
-    state_root: Hash,
+    pub parent_hash: Hash,
+    pub digest: MacroDigest,
+    pub extrinsics_root: Hash,
+    pub state_root: Hash,
 }
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct MicroHeader {
-    parent_hash: Hash,
-    digest: MicroDigest,
-    extrinsics_root: Hash,
-    state_root: Hash,
+    pub parent_hash: Hash,
+    pub digest: MicroDigest,
+    pub extrinsics_root: Hash,
+    pub state_root: Hash,
 }
 
 #[derive(Clone, Debug)]
 pub struct MacroExtrinsics {
-    timestamp: u64,
-    seed: Signature<Seed>,
-    view_change_messages: Option<ViewChangeProof>,
+    pub timestamp: u64,
+    pub seed: Signature<Seed>,
+    pub view_change_messages: Option<ViewChangeProof>,
 }
 
 #[derive(Clone, Debug)]
 pub struct MicroExtrinsics {
-    timestamp: u64,
-    seed: Signature<Seed>,
-    view_change_messages: Option<ViewChangeProof>,
-    slash_inherents: Vec<SlashInherent>,
-    transactions: Vec<Transaction>,
+    pub timestamp: u64,
+    pub seed: Signature<Seed>,
+    pub view_change_messages: Option<ViewChangeProof>,
+    pub slash_inherents: Vec<SlashInherent>,
+    pub transactions: Vec<Transaction>,
 }
 
 #[derive(Clone, Debug)]
 pub struct MacroBlock {
-    header: MacroHeader,
-    extrinsics: MacroExtrinsics,
-    justification: PbftJustification,
+    pub header: MacroHeader,
+    pub extrinsics: MacroExtrinsics,
+    pub justification: PbftJustification,
 
 }
 
 #[derive(Clone, Debug)]
 pub struct MicroBlock {
-    header: MicroHeader,
-    extrinsics: MicroExtrinsics,
-    justification: Signature<MicroHeader>,
+    pub header: MicroHeader,
+    pub extrinsics: MicroExtrinsics,
+    pub justification: Signature<MicroHeader>,
 }

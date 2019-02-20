@@ -10,8 +10,8 @@ pub struct PbftJustification {
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct ViewChangeInternals {
-    block_number: u32,
-    new_validator: u16,
+    pub block_number: u32,
+    pub new_view_number: u16,
 }
 
 #[derive(Clone, Debug)]
@@ -20,4 +20,8 @@ pub struct ViewChange {
     signature: Signature<ViewChangeInternals>,
 }
 
-pub type ViewChangeProof = AggregateSignature<ViewChangeInternals>;
+#[derive(Clone, Debug)]
+pub struct ViewChangeProof {
+    pub signatures: AggregateSignature<ViewChangeInternals>,
+    pub public_key_bitmap: Vec<u16>,
+}

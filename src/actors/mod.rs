@@ -3,6 +3,8 @@ use crate::datastructures::block::Block;
 
 pub mod honest;
 
+pub type MetricsEventType = ();
+
 pub struct Timing {
     pub signature_verification: Duration,
 }

@@ -13,7 +13,8 @@ pub struct ProtocolConfig {
 
 pub trait Protocol {
     fn next_block_type(&self) -> BlockType;
-    fn next_block_producer(&self) -> PublicKey;
+    fn next_block_producer(&self, view_change_number: u16) -> PublicKey;
     fn next_block_number(&self) -> u32;
     fn handle_block(&mut self, event: Event, env: Environment<Event, ()>);
+    fn get_validators(&self, bitmap: &[u16]) -> Vec<PublicKey>;
 }
