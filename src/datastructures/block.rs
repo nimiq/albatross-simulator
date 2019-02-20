@@ -6,6 +6,8 @@ use crate::datastructures::signature::Signature;
 use crate::datastructures::slashing::SlashInherent;
 use crate::datastructures::transaction::Transaction;
 
+pub type Seed = Hash;
+
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub enum BlockType {
     Macro,
@@ -74,14 +76,14 @@ pub struct MicroHeader {
 #[derive(Clone, Debug)]
 pub struct MacroExtrinsics {
     timestamp: u64,
-    seed: Signature<Vec<u8>>,
+    seed: Signature<Seed>,
     view_change_messages: Option<ViewChangeProof>,
 }
 
 #[derive(Clone, Debug)]
 pub struct MicroExtrinsics {
     timestamp: u64,
-    seed: Signature<Vec<u8>>,
+    seed: Signature<Seed>,
     view_change_messages: Option<ViewChangeProof>,
     slash_inherents: Vec<SlashInherent>,
     transactions: Vec<Transaction>,

@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use crate::datastructures::hash::{Hash, Hasher};
+
 #[derive(Clone, Debug)]
 pub struct Signature<M: Eq> {
     public_key: PublicKey,
@@ -10,17 +12,32 @@ impl<M: Eq> Signature<M> {
     pub fn verify(&self, public_key: &PublicKey, message: &M) -> bool {
         &self.public_key == public_key && &self.message == message
     }
+}
 
-    pub fn as_bytes(&self) -> Vec<u8> {
+impl<M: Eq + AsRef<[u8]>> Signature<M> {
+    pub fn to_hash(&self) -> Hash {
         // Required to generate deterministic randomness.
         // Simply hash public key and message for our simulation.
-        unimplemented!()
+        Hasher::default()
+            .chain(&self.public_key.to_bytes())
+            .chain(&self.message)
+            .result()
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.to_hash().into()
     }
 }
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct PublicKey {
     id: u64,
+}
+
+impl PublicKey {
+    pub fn to_bytes(&self) -> [u8; 8] {
+        self.id.to_be_bytes()
+    }
 }
 
 #[derive(Clone, Debug)]
