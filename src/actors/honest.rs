@@ -29,19 +29,19 @@ impl Node for HonestActor {
     type MetricsEventType = MetricsEventType;
 
     fn run(&mut self, event: SimulatorEvent<Self::EventType>, env: Environment<Self::EventType, Self::MetricsEventType>) -> bool {
-        match event.inner() {
-            // External events.
-            event @ Event::Block(_) => (),
-            Event::Transaction(transaction) => (),
-            Event::ViewChange(view_change) => (),
-
-            // Internal events.
-            Event::BlockProcessed(block, valid) => (),
-            Event::BlockProduced(block) => (),
-            Event::TransactionProcessed(transaction) => (),
-            Event::Timeout => (),
-            _ => (),
-        }
+//        match event.inner() {
+//            // External events.
+//            event @ Event::Block(_) => (),
+//            Event::Transaction(transaction) => (),
+//            Event::ViewChange(view_change) => (),
+//
+//            // Internal events.
+//            Event::BlockProcessed(block, valid) => (),
+//            Event::BlockProduced(block) => (),
+//            Event::TransactionProcessed(transaction) => (),
+//            Event::Timeout => (),
+//            _ => (),
+//        }
 
         // Run for the configured amount of blocks.
         self.last_block.block_number() < self.simulation_config.blocks

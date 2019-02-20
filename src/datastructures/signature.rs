@@ -40,6 +40,30 @@ impl PublicKey {
     }
 }
 
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct SecretKey {
+    id: u64,
+}
+
+impl SecretKey {
+    pub fn sign<M: Eq + Clone>(&self, message: &M) -> Signature<M> {
+        Signature {
+            public_key: PublicKey {
+                id: self.id,
+            },
+            message: message.clone(),
+        }
+    }
+}
+
+impl<'a> From<&'a SecretKey> for PublicKey {
+    fn from(key: &'a SecretKey) -> Self {
+        PublicKey {
+            id: key.id,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AggregatePublicKey {
     public_keys: Vec<PublicKey>,

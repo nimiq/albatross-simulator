@@ -1,5 +1,6 @@
 use std::time::Duration;
 use crate::datastructures::block::Block;
+use crate::datastructures::block::MicroBlock;
 
 pub mod honest;
 

@@ -18,7 +18,7 @@ pub enum Event {
     BlockProcessed(Block, bool),
     BlockProduced(Block),
     TransactionProcessed(Transaction),
-    Timeout,
+    Timeout(u32, u16),
 }
 
 pub struct SimulationConfig {
