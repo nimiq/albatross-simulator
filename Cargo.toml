@@ -1,0 +1,16 @@
+[package]
+name = "albatross-simulation"
+version = "0.1.0"
+authors = ["pb <mail@paberr.net>"]
+edition = "2018"
+
+[dependencies]
+simulator = { path = "simulator" }
+sha2 = "0.8"
+
+#[dependencies.bls]
+#git = "https://github.com/str4d/bls"
+#version = "0.0.1"
+
+[workspace]
+members = ["simulator"]

@@ -135,7 +135,7 @@ impl NetworkConfig for Network {
         &self.adjacency[from]
     }
 
-    fn latency(&self, from: usize, to: usize) -> Option<Duration> {
+    fn transmission_delay(&self, from: usize, to: usize, _event: &PingPongEvent) -> Option<Duration> {
         self.network.get(from)?.get(to)?.map(Duration::from_millis)
     }
 
