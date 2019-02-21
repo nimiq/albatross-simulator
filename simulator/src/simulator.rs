@@ -13,6 +13,7 @@ pub struct Simulator<N: NetworkConfig, M: Metrics<EventType=N::MetricsEventType>
     metrics: M,
     nodes: Vec<Box<Node<EventType=N::EventType, MetricsEventType=N::MetricsEventType>>>,
     queue: BinaryHeap<Event<N::EventType>>,
+    initial_time: Time,
 }
 
 impl<N: NetworkConfig, M: Metrics<EventType=N::MetricsEventType>> Simulator<N, M> {
@@ -24,6 +25,7 @@ impl<N: NetworkConfig, M: Metrics<EventType=N::MetricsEventType>> Simulator<N, M
             network_config,
             metrics,
             queue: BinaryHeap::new(),
+            initial_time: Time::new(),
         }
     }
 
@@ -48,7 +50,7 @@ impl<N: NetworkConfig, M: Metrics<EventType=N::MetricsEventType>> Simulator<N, M
 
     /// Sends an initial event to a node.
     pub fn initial_event(&mut self, to: UniqueId, inner: N::EventType) {
-        self.queue.push(Event::new(inner, Time::new(), to, to));
+        self.queue.push(Event::new(inner, self.initial_time, to, to));
     }
 
     /// Runs the simulation.
@@ -78,5 +80,10 @@ impl<N: NetworkConfig, M: Metrics<EventType=N::MetricsEventType>> Simulator<N, M
     /// Returns access to the collected metrics.
     pub fn metrics(&self) -> &M {
         &self.metrics
+    }
+
+    /// Returns the start time of the simulation.
+    pub fn initial_time(&self) -> Time {
+        self.initial_time
     }
 }

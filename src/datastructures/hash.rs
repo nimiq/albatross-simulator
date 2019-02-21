@@ -1,4 +1,5 @@
 use sha2::{Digest, Sha256};
+use std::fmt;
 
 #[derive(Default)]
 pub struct Hasher(Sha256);
@@ -18,7 +19,7 @@ impl Hasher {
     }
 }
 
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]
+#[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]
 pub struct Hash([u8; 32]);
 
 impl Hash {
@@ -55,5 +56,11 @@ impl<'a> From<&'a Hash> for Vec<u8> {
 impl From<Hash> for Vec<u8> {
     fn from(hash: Hash) -> Self {
         hash.to_vec()
+    }
+}
+
+impl fmt::Debug for Hash {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{}", hex::encode(&self.0))
     }
 }

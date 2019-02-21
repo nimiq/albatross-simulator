@@ -6,6 +6,7 @@ use crate::datastructures::signature::Signature;
 use crate::datastructures::slashing::SlashInherent;
 use crate::datastructures::transaction::Transaction;
 use crate::datastructures::hash::Hasher;
+use std::fmt;
 
 pub type Seed = Hash;
 
@@ -15,7 +16,7 @@ pub enum BlockType {
     Micro,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Block {
     Macro(MacroBlock),
     Micro(MicroBlock),
@@ -58,7 +59,13 @@ impl Block {
     }
 }
 
-#[derive(Clone, Debug)]
+impl fmt::Display for Block {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "[#{}, view {}, type {:?}]", self.block_number(), self.view_number(), self.block_type())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum BlockHeader {
     Micro(MicroHeader),
     Macro(MacroHeader),
@@ -149,6 +156,12 @@ impl MicroHeader {
     }
 }
 
+impl fmt::Display for MicroHeader {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "block @ {} (view {}, type Micro)", self.digest.block_number, self.digest.view_number)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct MacroExtrinsics {
     pub timestamp: u64,
@@ -184,7 +197,23 @@ pub struct MacroBlock {
     pub header: MacroHeader,
     pub extrinsics: MacroExtrinsics,
     pub justification: Option<PbftJustification>,
+}
 
+impl PartialEq for MacroBlock {
+    fn eq(&self, other: &MacroBlock) -> bool {
+        self.header == other.header
+        // TODO
+    }
+}
+
+impl Eq for MacroBlock {}
+
+impl fmt::Display for MacroBlock {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "[#{}, view {}, type Macro]",
+               self.header.digest.block_number,
+               self.header.digest.view_number)
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -193,3 +222,12 @@ pub struct MicroBlock {
     pub extrinsics: MicroExtrinsics,
     pub justification: Signature<MicroHeader>,
 }
+
+impl PartialEq for MicroBlock {
+    fn eq(&self, other: &MicroBlock) -> bool {
+        self.header == other.header
+        // TODO
+    }
+}
+
+impl Eq for MicroBlock {}

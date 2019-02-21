@@ -6,18 +6,21 @@ use crate::datastructures::block::MicroBlock;
 
 pub mod honest;
 
-pub type MetricsEventType = ();
-
+#[derive(Clone, Debug)]
 pub struct Timing {
     pub signature_verification: Duration,
 }
 
 impl Timing {
     pub fn block_processing_time(&self, block: &Block) -> Duration {
-        Duration::default()
+        Duration::from_millis(100)
     }
 
     pub fn proposal_processing_time(&self, block: &MacroBlock) -> Duration {
-        Duration::default()
+        Duration::from_millis(100)
+    }
+
+    pub fn block_production_time(&self, block: &Block) -> Duration {
+        Duration::from_millis(100)
     }
 }

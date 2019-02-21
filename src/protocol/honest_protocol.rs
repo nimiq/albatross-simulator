@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::collections::HashSet;
 use std::iter::FromIterator;
 
 use num_bigint::BigUint;
@@ -6,7 +7,6 @@ use num_traits::ToPrimitive;
 
 use simulator::Environment;
 
-use crate::actors::MetricsEventType;
 use crate::actors::Timing;
 use crate::datastructures::block::*;
 use crate::datastructures::hash::*;
@@ -18,6 +18,7 @@ use crate::protocol::macro_block::{MacroBlockPhase, MacroBlockState};
 use crate::protocol::ProtocolConfig;
 use crate::protocol::ViewChangeState;
 use crate::simulation::Event;
+use crate::simulation::metrics::MetricsEventType;
 
 pub struct HonestProtocol {
     protocol_config: ProtocolConfig,
@@ -27,10 +28,33 @@ pub struct HonestProtocol {
     chain: Vec<Block>,
     key_pair: KeyPair,
     validators: Vec<PublicKey>,
-    processing_block: bool, // Do not process blocks concurrently.
+
+    // Do not accept known blocks.
+    known_blocks: HashSet<Hash>,
 }
 
 impl HonestProtocol {
+    /// Create a protocol instance.
+    pub fn new(protocol_config: ProtocolConfig, timing: Timing,
+               genesis_block: MacroBlock, key_pair: KeyPair) -> Self {
+        HonestProtocol {
+            protocol_config,
+            timing,
+            view_change_state: ViewChangeState::default(),
+            macro_block_state: MacroBlockState::default(),
+            validators: genesis_block.header.digest.validators.clone(),
+            chain: vec![Block::Macro(genesis_block)],
+            key_pair,
+
+            known_blocks: HashSet::new(),
+        }
+    }
+
+    /// Returns the next block number.
+    pub fn current_block_number(&self) -> u32 {
+        self.chain.len() as u32 - 1
+    }
+
     /// Returns the next block number.
     fn next_block_number(&self) -> u32 {
         self.chain.len() as u32
@@ -66,6 +90,7 @@ impl HonestProtocol {
             assert_ne!(block.map(|b| b.block_type()), Some(BlockType::Macro));
         }
 
+        self.known_blocks.insert(block.hash()); // Also store known block if we produced it.
         self.chain.push(block);
 
         self.view_change_state.reset();
@@ -75,7 +100,7 @@ impl HonestProtocol {
     /// Prepare protocol for next block:
     /// Check if we are the next block producer.
     /// If so, produce a block, otherwise set a timeout.
-    fn prepare_next_block(&mut self, mut env: Environment<Event, MetricsEventType>) {
+    pub fn prepare_next_block(&mut self, env: &mut Environment<Event, MetricsEventType>) {
         let next_producer = self.get_producer_at(self.next_block_number(), self.view_change_state.view_number);
         if next_producer == self.key_pair.public_key() {
             self.produce_block(env);
@@ -95,7 +120,14 @@ impl HonestProtocol {
     }
 
     /// A block has been received, simulate processing.
-    fn received_block(&self, block: Block, mut env: Environment<Event, MetricsEventType>) {
+    pub fn received_block(&mut self, block: Block, env: &mut Environment<Event, MetricsEventType>) {
+        // Check whether we already received this block.
+        let hash = block.hash();
+        if self.known_blocks.contains(&hash) {
+            return;
+        }
+        self.known_blocks.insert(hash);
+
         let processing_time = env.time() + self.timing.block_processing_time(&block);
         env.schedule_self(Event::BlockProcessed(block), processing_time);
     }
@@ -103,7 +135,7 @@ impl HonestProtocol {
     /// A block has been processed, ensure its validity.
     /// If it is invalid, ignore it.
     /// If it is valid, store block and reset state.
-    fn processed_block(&mut self, block: Block, mut env: Environment<Event, MetricsEventType>) {
+    pub fn processed_block(&mut self, block: Block, env: &mut Environment<Event, MetricsEventType>) {
         // We verify the block.
         let result = self.verify_block(&block);
 
@@ -117,7 +149,7 @@ impl HonestProtocol {
             self.store_block(block.clone());
 
             // Relay block.
-            self.relay(Event::Block(block), &mut env);
+            self.relay(Event::Block(block), env);
 
             self.prepare_next_block(env);
         } else {
@@ -128,12 +160,12 @@ impl HonestProtocol {
     /// Called when a timeout has been triggered.
     /// Check whether a corresponding (valid) block has been received in the meantime.
     /// If not, prepare and send out view change message.
-    fn handle_timeout(&mut self, block_number: u32, view_number: u16, mut env: Environment<Event, MetricsEventType>) {
+    pub fn handle_timeout(&mut self, block_number: u32, view_number: u16, env: &mut Environment<Event, MetricsEventType>) {
         // Check whether timeout was triggered and no new block has been accepted in the meanwhile.
         if self.next_block_number() == block_number && self.view_change_state.view_number == view_number {
             // Send and process view change message.
             let view_change = ViewChange::new(block_number, view_number + 1, &self.key_pair.secret_key());
-            self.multicast_to_validators(Event::ViewChange(view_change.clone()), &mut env);
+            self.multicast_to_validators(Event::ViewChange(view_change.clone()), env);
 
             // Handle own message exactly like others.
             self.handle_view_change(view_change, env);
@@ -145,7 +177,7 @@ impl HonestProtocol {
     /// If we received enough view change messages for this view change number,
     /// stop accepting blocks for this number and move on.
     /// In this case, also check for next block producer or start timeout.
-    fn handle_view_change(&mut self, view_change: ViewChange, mut env: Environment<Event, MetricsEventType>) {
+    pub fn handle_view_change(&mut self, view_change: ViewChange, env: &mut Environment<Event, MetricsEventType>) {
         // Validate view change message:
         // Should be for current block and have a valid signature.
         if view_change.internals.block_number != self.next_block_number()
@@ -171,13 +203,18 @@ impl HonestProtocol {
     }
 
     /// Handles a macro block proposal.
-    fn handle_macro_block_proposal(&mut self, proposal: MacroBlock, signature: Signature<MacroHeader>, mut env: Environment<Event, MetricsEventType>) {
+    pub fn handle_macro_block_proposal(&mut self, proposal: MacroBlock, signature: Signature<MacroHeader>, env: &mut Environment<Event, MetricsEventType>) {
         let processing_time = env.time() + self.timing.proposal_processing_time(&proposal);
         env.schedule_self(Event::ProposalProcessed(proposal, signature), processing_time);
     }
 
     /// A macro block proposal has been processed.
-    fn processed_proposal(&mut self, proposal: MacroBlock, signature: Signature<MacroHeader>, mut env: Environment<Event, MetricsEventType>) {
+    pub fn processed_proposal(&mut self, proposal: MacroBlock, signature: Signature<MacroHeader>, env: &mut Environment<Event, MetricsEventType>) {
+        // No duplicate proposal processing.
+        if self.macro_block_state.proposal.is_some() {
+            return;
+        }
+
         // We verify the proposal first.
         let mut result = self.verify_macro_block(&proposal, true);
 
@@ -199,12 +236,12 @@ impl HonestProtocol {
 
             let hash = proposal.header.hash();
             // Relay block.
-            self.relay(Event::BlockProposal(proposal, signature), &mut env);
+            self.relay(Event::BlockProposal(proposal, signature), env);
 
             // Send and process prepare message.
             // FIXME: Currently prepare/commit signatures are identical in the simulation.
             let prepare = PbftProof::new(&hash, &self.key_pair.secret_key());
-            self.multicast_to_validators(Event::BlockPrepare(prepare.clone()), &mut env);
+            self.multicast_to_validators(Event::BlockPrepare(prepare.clone()), env);
 
             self.handle_prepare(prepare, env);
         } else {
@@ -213,7 +250,7 @@ impl HonestProtocol {
     }
 
     /// Handles an incoming prepare message.
-    fn handle_prepare(&mut self, prepare: PbftProof, mut env: Environment<Event, MetricsEventType>) {
+    pub fn handle_prepare(&mut self, prepare: PbftProof, env: &mut Environment<Event, MetricsEventType>) {
         let hash;
         if let Some(ref proposal) = self.macro_block_state.proposal {
             // Verify prepare.
@@ -235,14 +272,14 @@ impl HonestProtocol {
             // Send and process prepare message.
             // FIXME: Currently prepare/commit signatures are identical in the simulation.
             let commit = PbftProof::new(&hash, &self.key_pair.secret_key());
-            self.multicast_to_validators(Event::BlockCommit(commit.clone()), &mut env);
+            self.multicast_to_validators(Event::BlockCommit(commit.clone()), env);
 
             self.handle_commit(commit, env);
         }
     }
 
     /// Handles an incoming prepare message.
-    fn handle_commit(&mut self, commit: PbftProof, mut env: Environment<Event, MetricsEventType>) {
+    pub fn handle_commit(&mut self, commit: PbftProof, env: &mut Environment<Event, MetricsEventType>) {
         let hash;
         if let Some(ref proposal) = self.macro_block_state.proposal {
             // Verify prepare.
@@ -273,7 +310,7 @@ impl HonestProtocol {
             self.store_block(block.clone());
 
             // Relay block.
-            self.relay(Event::Block(block), &mut env);
+            self.relay(Event::Block(block), env);
 
             self.prepare_next_block(env);
         }
@@ -429,7 +466,7 @@ impl HonestProtocol {
     }
 
     /// Called if we are the block producer and builds a block.
-    fn produce_block(&mut self, mut env: Environment<Event, MetricsEventType>) {
+    fn produce_block(&mut self, env: &mut Environment<Event, MetricsEventType>) {
         let block_number = self.next_block_number();
         let view_messages = self.view_change_state.view_change_messages
             .get(&self.view_change_state.view_number)
@@ -439,7 +476,7 @@ impl HonestProtocol {
         let seed = self.key_pair.secret_key().sign(&previous_block.seed().hash());
 
         // TODO Fill block.
-        match self.block_type_at(block_number) {
+        let block = match self.block_type_at(block_number) {
             BlockType::Micro => {
                 let extrinsics = MicroExtrinsics {
                     timestamp: 0,
@@ -462,14 +499,11 @@ impl HonestProtocol {
                     state_root: Hash::default(), // TODO: Simulate stake.
                 };
 
-                let block = Block::Micro(MicroBlock {
+                Block::Micro(MicroBlock {
                     justification: self.key_pair.secret_key().sign(&header),
                     header,
                     extrinsics,
-                });
-
-                self.store_block(block.clone());
-                self.relay(Event::Block(block), &mut env);
+                })
             },
             BlockType::Macro => {
                 let digest = MacroDigest {
@@ -492,15 +526,30 @@ impl HonestProtocol {
                     state_root: Hash::default(), // TODO: Simulate stake.
                 };
 
-                let signature = self.key_pair.secret_key().sign(&header);
-
-                let block = MacroBlock {
+                Block::Macro(MacroBlock {
                     header,
                     extrinsics,
                     justification: None,
-                };
+                })
+            },
+        };
 
-                self.multicast_to_validators(Event::BlockProposal(block, signature), &mut env);
+        let processing_time = env.time() + self.timing.block_production_time(&block);
+        env.schedule_self(Event::BlockProduced(block), processing_time);
+    }
+
+    /// Called after successful block production.
+    pub fn produced_block(&mut self, block: Block, env: &mut Environment<Event, MetricsEventType>) {
+        match block {
+            block @ Block::Micro(_) => {
+                self.store_block(block.clone());
+                self.relay(Event::Block(block), env);
+                self.prepare_next_block(env);
+            },
+            Block::Macro(proposal) => {
+                let signature = self.key_pair.secret_key().sign(&proposal.header);
+                self.multicast_to_validators(Event::BlockProposal(proposal.clone(), signature.clone()), env);
+                self.processed_proposal(proposal, signature, env);
             },
         }
     }

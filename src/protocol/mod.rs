@@ -8,6 +8,7 @@ use crate::datastructures::slashing::SlashInherent;
 pub mod macro_block;
 pub mod honest_protocol;
 
+#[derive(Clone, Debug)]
 pub struct ProtocolConfig {
     pub micro_block_timeout: Duration,
     pub macro_block_timeout: Duration,
@@ -38,6 +39,7 @@ pub enum BlockError {
     MissingJustification,
 }
 
+#[derive(Default)]
 pub struct ViewChangeState {
     pub view_number: u16,
     pub view_change_messages: HashMap<u16, HashSet<ViewChange>>,

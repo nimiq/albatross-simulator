@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
 
@@ -63,6 +64,12 @@ impl Hash for PbftProof {
     }
 }
 
+impl fmt::Display for PbftProof {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "PbftMessage(from {})", self.id)
+    }
+}
+
 /// Return a set of public keys given to a bitmap.
 /// We only need this for the current validator set, since macro blocks cannot be reverted.
 pub fn get_validators(validators: &[PublicKey], bitmap: &[u16]) -> Vec<PublicKey> {
@@ -117,6 +124,14 @@ impl Hash for ViewChange {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.internals.hash(state);
         self.id.hash(state);
+    }
+}
+
+impl fmt::Display for ViewChange {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "ViewChange(block {}, new view {})",
+               self.internals.block_number,
+               self.internals.new_view_number)
     }
 }
 

@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::time::Duration;
 
 use crate::node::Node;
@@ -12,7 +13,7 @@ pub trait NetworkConfig {
 
     /// Returns the adjacent nodes.
     /// Links are not duplex by default!
-    fn adjacent(&self, from: UniqueId) -> &[UniqueId];
+    fn adjacent(&self, from: UniqueId) -> Cow<Vec<UniqueId>>;
 
     /// Returns the delay for an event sent over a link if it exists, None otherwise.
     /// Links are not duplex by default!

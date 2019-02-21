@@ -5,6 +5,7 @@ use std::time::Duration;
 use simulator::{Environment, Event, Metrics, NetworkConfig, Node, Simulator, Timer};
 
 use crate::example_metrics::DefaultMetrics;
+use std::borrow::Cow;
 
 mod example_metrics;
 
@@ -38,7 +39,8 @@ impl Node for PingPong {
         match event.inner() {
             PingPongEvent::Init => {
                 // Send first Ping event to all peers.
-                for peer in env.peers().to_vec() {
+                let peers = env.peers().into_owned();
+                for &peer in peers.iter() {
                     // Note that event has been sent out.
                     env.note_event(&PingPongMetrics::Init, env.time());
 
@@ -131,8 +133,8 @@ impl NetworkConfig for Network {
         self.network.len()
     }
 
-    fn adjacent(&self, from: usize) -> &[usize] {
-        &self.adjacency[from]
+    fn adjacent(&self, from: usize) -> Cow<Vec<usize>> {
+        Cow::Borrowed(&self.adjacency[from])
     }
 
     fn transmission_delay(&self, from: usize, to: usize, _event: &PingPongEvent) -> Option<Duration> {

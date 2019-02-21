@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use crate::datastructures::hash::{Hash, Hasher};
+use std::fmt;
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Signature<M: Eq> {
@@ -29,12 +30,22 @@ impl<M: Eq + AsRef<[u8]>> Signature<M> {
     }
 }
 
+impl<M: Eq> fmt::Display for Signature<M> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "Signature({})", self.public_key)
+    }
+}
+
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct KeyPair {
     id: u64,
 }
 
 impl KeyPair {
+    pub fn from_id(id: u64) -> Self {
+        KeyPair { id }
+    }
+
     pub fn public_key(&self) -> PublicKey {
         PublicKey {
             id: self.id,
@@ -56,6 +67,12 @@ pub struct PublicKey {
 impl PublicKey {
     pub fn to_bytes(&self) -> [u8; 8] {
         self.id.to_be_bytes()
+    }
+}
+
+impl fmt::Display for PublicKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "PublicKey(from {})", self.id)
     }
 }
 

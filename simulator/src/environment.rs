@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::binary_heap::BinaryHeap;
 use std::time::Duration;
 
@@ -31,7 +32,7 @@ impl<'a, E, ME> Environment<'a, E, ME> {
 
     /// Returns a slice of peers this node has.
     #[inline]
-    pub fn peers(&self) -> &[UniqueId] {
+    pub fn peers(&self) -> Cow<Vec<UniqueId>> {
         self.network_config.adjacent(self.own_id)
     }
 
@@ -94,7 +95,7 @@ impl<'a, E: Clone, K> Environment<'a, E, K> {
     /// Sends a scheduled event to all connected peers.
     #[inline]
     pub fn scheduled_broadcast(&mut self, event: E, scheduled_send_time: Time) {
-        for channel in self.network_config.adjacent(self.own_id) {
+        for channel in self.network_config.adjacent(self.own_id).iter() {
             self.schedule(*channel, event.clone(), scheduled_send_time);
         }
     }

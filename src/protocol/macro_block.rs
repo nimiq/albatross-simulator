@@ -46,3 +46,15 @@ impl MacroBlockState {
         self.phase = MacroBlockPhase::WAITING;
     }
 }
+
+impl Default for MacroBlockState {
+    fn default() -> Self {
+        MacroBlockState {
+            view_number: 0,
+            proposal: None,
+            prepares: HashSet::new(),
+            commits: HashSet::new(),
+            phase: MacroBlockPhase::WAITING,
+        }
+    }
+}
