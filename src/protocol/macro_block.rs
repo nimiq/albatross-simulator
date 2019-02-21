@@ -1,18 +1,17 @@
 use crate::datastructures::block::MacroBlock;
-use simulator::Time;
-use crate::simulation::Event;
 
 pub struct MacroBlockState {
-    view_change_number: u16,
-    proposal: Option<MacroBlock>,
-    prepares: Vec<()>,
-    commits: Vec<()>,
+    pub view_number: u16,
+    pub proposal: Option<MacroBlock>,
+    pub prepares: Vec<()>,
+    pub commits: Vec<()>,
 }
 
-pub trait MacroBlockProtocol {
-    fn produce_block(&mut self, time: Time) -> MacroBlock;
-    fn prepare(&mut self, block: MacroBlock, time: Time);
-    fn commit(&mut self, block: MacroBlock, time: Time);
-    fn verify_block(&self, block: &MacroBlock) -> bool;
+impl MacroBlockState {
+    pub fn reset(&mut self) {
+        self.view_number = 0;
+        self.proposal = None;
+        self.prepares.clear();
+        self.commits.clear();
+    }
 }
-

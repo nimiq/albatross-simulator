@@ -28,6 +28,13 @@ impl Block {
         }
     }
 
+    pub fn view_number(&self) -> u16 {
+        match self {
+            Block::Macro(ref block) => block.header.digest.view_number,
+            Block::Micro(ref block) => block.header.digest.view_number,
+        }
+    }
+
     pub fn block_type(&self) -> BlockType {
         match self {
             Block::Macro(_) => BlockType::Macro,

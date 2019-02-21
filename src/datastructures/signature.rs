@@ -30,6 +30,25 @@ impl<M: Eq + AsRef<[u8]>> Signature<M> {
 }
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+pub struct KeyPair {
+    id: u64,
+}
+
+impl KeyPair {
+    pub fn public_key(&self) -> PublicKey {
+        PublicKey {
+            id: self.id,
+        }
+    }
+
+    pub fn secret_key(&self) -> SecretKey {
+        SecretKey {
+            id: self.id,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct PublicKey {
     id: u64,
 }

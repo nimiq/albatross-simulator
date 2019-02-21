@@ -15,7 +15,7 @@ pub enum Event {
     BlockCommit,
 
     // Internal events.
-    BlockProcessed(Block, bool),
+    BlockProcessed(Block),
     BlockProduced(Block),
     TransactionProcessed(Transaction),
     Timeout(u32, u16),

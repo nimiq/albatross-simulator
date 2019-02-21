@@ -38,6 +38,10 @@ impl ViewChange {
             id: key.into(),
         }
     }
+
+    pub fn verify(&self) -> bool {
+        self.signature.verify(&self.id, &self.internals)
+    }
 }
 
 impl PartialEq for ViewChange {

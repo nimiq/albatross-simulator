@@ -1,15 +1,13 @@
-use crate::datastructures::block::BlockType;
-use crate::datastructures::signature::PublicKey;
-use crate::datastructures::block::Block;
-use simulator::Environment;
-use crate::simulation::Event;
-use crate::actors::Timing;
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::time::Duration;
-use crate::actors::MetricsEventType;
-use crate::datastructures::signature::SecretKey;
+
+use crate::datastructures::pbft::ViewChange;
+use crate::protocol::micro_block::MicroBlockError;
 
 pub mod macro_block;
 pub mod micro_block;
+pub mod honest_protocol;
 
 pub struct ProtocolConfig {
     pub block_timeout: Duration,
@@ -24,18 +22,32 @@ impl ProtocolConfig {
     }
 }
 
-pub trait Protocol {
-    fn produce_block(&mut self);
-    fn own_public_key(&self) -> &PublicKey;
-    fn own_secret_key(&self) -> &SecretKey;
-    fn store_block(&mut self, block: Block);
-    fn timing(&self) -> &Timing;
-    fn protocol_config(&self) -> &ProtocolConfig;
-    fn next_block_type(&self) -> BlockType;
-    fn next_block_producer(&self, view_change_number: u16) -> PublicKey;
-    fn next_block_number(&self) -> u32;
-    fn handle_block(&mut self, event: Event, env: Environment<Event, MetricsEventType>);
-    fn get_validators(&self, bitmap: &[u16]) -> Vec<PublicKey>;
+#[derive(Debug)]
+pub enum BlockError {
+    Micro(MicroBlockError),
+//    Macro(MacroBlockError),
+}
 
-    fn broadcast_to_validators(&self, event: Event, env: Environment<Event, MetricsEventType>);
+pub struct ViewChangeState {
+    pub view_number: u16,
+    pub view_change_messages: HashMap<u16, HashSet<ViewChange>>,
+}
+
+impl ViewChangeState {
+    pub fn add_message(&mut self, view_change: ViewChange) {
+        self.view_change_messages.entry(view_change.internals.new_view_number)
+            .or_insert_with(HashSet::new)
+            .insert(view_change);
+    }
+
+    pub fn num_messages(&self, view_number: u16) -> u16 {
+        self.view_change_messages.get(&view_number)
+            .map(|s| s.len())
+            .unwrap_or(0) as u16
+    }
+
+    pub fn reset(&mut self) {
+        self.view_number = 0;
+        self.view_change_messages.clear();
+    }
 }

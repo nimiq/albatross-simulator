@@ -3,8 +3,8 @@ use crate::datastructures::signature::Signature;
 
 #[derive(Clone, Debug)]
 pub struct SlashInherent {
-    header1: MicroHeader,
-    justification1: Signature<MicroHeader>,
-    header2: MicroHeader,
-    justification2: Signature<MicroHeader>,
+    pub header1: MicroHeader,
+    pub justification1: Signature<MicroHeader>,
+    pub header2: MicroHeader,
+    pub justification2: Signature<MicroHeader>,
 }
