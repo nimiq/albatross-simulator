@@ -18,7 +18,7 @@ impl Hasher {
     }
 }
 
-#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash, Default)]
 pub struct Hash([u8; 32]);
 
 impl Hash {

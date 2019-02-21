@@ -8,6 +8,8 @@ edition = "2018"
 simulator = { path = "simulator" }
 sha2 = "0.8"
 log = "0.4"
+num-bigint = "0.2"
+num-traits = "0.2"
 
 #[dependencies.bls]
 #git = "https://github.com/str4d/bls"

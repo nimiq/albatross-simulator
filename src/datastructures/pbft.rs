@@ -1,14 +1,14 @@
+use std::collections::HashMap;
+use std::collections::HashSet;
 use std::hash::Hash;
 use std::hash::Hasher;
 
 use crate::datastructures::block::MacroHeader;
 use crate::datastructures::hash::Hash as ShaHash;
+use crate::datastructures::signature::{AggregatePublicKey, PublicKey};
 use crate::datastructures::signature::AggregateSignature;
-use crate::datastructures::signature::{PublicKey, AggregatePublicKey};
 use crate::datastructures::signature::SecretKey;
 use crate::datastructures::signature::Signature;
-use std::collections::HashSet;
-use std::collections::HashMap;
 
 #[derive(Clone, Debug)]
 pub struct PbftJustification {
@@ -58,7 +58,7 @@ impl Eq for PbftProof {}
 
 impl Hash for PbftProof {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.signature.hash(state);
+        Hash::hash(&self.signature, state);
         self.id.hash(state);
     }
 }
@@ -150,3 +150,26 @@ impl AggregateProof<ShaHash> {
 }
 
 pub type ViewChangeProof = AggregateProof<ViewChangeInternals>;
+
+impl AggregateProof<ViewChangeInternals> {
+    pub fn create_from_view_change(set: &HashSet<ViewChange>, validators: &[PublicKey]) -> Self {
+        let mut signatures = Vec::with_capacity(set.len());
+        let mut key_bitmap = Vec::with_capacity(set.len());
+
+        // FIXME: Inefficient.
+        let mut key_to_id_map = HashMap::new();
+        for (i, key) in validators.iter().enumerate() {
+            key_to_id_map.insert(key.clone(), i as u16);
+        }
+
+        for proof in set.iter() {
+            signatures.push(proof.signature.clone());
+            key_bitmap.push(*key_to_id_map.get(&proof.id).unwrap());
+        }
+
+        AggregateProof {
+            signatures: AggregateSignature::from(signatures),
+            public_key_bitmap: key_bitmap,
+        }
+    }
+}

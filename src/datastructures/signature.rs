@@ -15,7 +15,7 @@ impl<M: Eq> Signature<M> {
 }
 
 impl<M: Eq + AsRef<[u8]>> Signature<M> {
-    pub fn to_hash(&self) -> Hash {
+    pub fn hash(&self) -> Hash {
         // Required to generate deterministic randomness.
         // Simply hash public key and message for our simulation.
         Hasher::default()
@@ -25,7 +25,7 @@ impl<M: Eq + AsRef<[u8]>> Signature<M> {
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
-        self.to_hash().into()
+        self.hash().into()
     }
 }
 

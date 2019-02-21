@@ -1,27 +1,23 @@
 use std::cmp::Ordering;
+use std::iter::FromIterator;
+
+use num_bigint::BigUint;
+use num_traits::ToPrimitive;
 
 use simulator::Environment;
 
 use crate::actors::MetricsEventType;
 use crate::actors::Timing;
-use crate::datastructures::block::Block;
-use crate::datastructures::block::BlockType;
-use crate::datastructures::block::MicroBlock;
-use crate::datastructures::pbft::{ViewChange, ViewChangeInternals, get_validators};
-use crate::datastructures::signature::{KeyPair, PublicKey, AggregatePublicKey};
+use crate::datastructures::block::*;
+use crate::datastructures::hash::*;
+use crate::datastructures::pbft::*;
+use crate::datastructures::signature::*;
 use crate::datastructures::slashing::SlashInherent;
 use crate::protocol::BlockError;
-use crate::protocol::macro_block::{MacroBlockState, MacroBlockPhase};
+use crate::protocol::macro_block::{MacroBlockPhase, MacroBlockState};
 use crate::protocol::ProtocolConfig;
 use crate::protocol::ViewChangeState;
 use crate::simulation::Event;
-use crate::datastructures::block::MacroBlock;
-use crate::datastructures::signature::Signature;
-use crate::datastructures::hash::Hash;
-use crate::datastructures::block::MacroHeader;
-use crate::datastructures::pbft::PbftProof;
-use crate::datastructures::pbft::PbftJustification;
-use crate::datastructures::pbft::AggregateProof;
 
 pub struct HonestProtocol {
     protocol_config: ProtocolConfig,
@@ -80,9 +76,9 @@ impl HonestProtocol {
     /// Check if we are the next block producer.
     /// If so, produce a block, otherwise set a timeout.
     fn prepare_next_block(&mut self, mut env: Environment<Event, MetricsEventType>) {
-        let next_producer = false; // TODO
-        if next_producer {
-//            self.produce_block() TODO
+        let next_producer = self.get_producer_at(self.next_block_number(), self.view_change_state.view_number);
+        if next_producer == self.key_pair.public_key() {
+            self.produce_block(env);
         } else {
             // Set a timeout.
             match self.block_type_at(self.next_block_number()) {
@@ -363,6 +359,7 @@ impl HonestProtocol {
         // TODO: Check slash inherents.
         // TODO: Check Merkle hashes.
         // TODO: Check for conflicting block.
+        // TODO: Check prev hash.
 
         Ok(())
     }
@@ -419,8 +416,93 @@ impl HonestProtocol {
 
         // TODO: Check timestamp.
         // TODO: Check Merkle hashes.
+        // TODO: Check validator list.
+        // TODO: Check prev hash.
 
         Ok(())
+    }
+
+    /// Calculates a new validator list.
+    fn compute_validators(&self, block_number: u32, seed: &Signature<Seed>) -> Vec<PublicKey> {
+        // TODO: Actually choose validators.
+        self.validators.clone()
+    }
+
+    /// Called if we are the block producer and builds a block.
+    fn produce_block(&mut self, mut env: Environment<Event, MetricsEventType>) {
+        let block_number = self.next_block_number();
+        let view_messages = self.view_change_state.view_change_messages
+            .get(&self.view_change_state.view_number)
+            .map(|set| AggregateProof::create_from_view_change(set, &self.validators));
+
+        let previous_block: &Block = self.chain.get(block_number as usize - 1).unwrap();
+        let seed = self.key_pair.secret_key().sign(&previous_block.seed().hash());
+
+        // TODO Fill block.
+        match self.block_type_at(block_number) {
+            BlockType::Micro => {
+                let extrinsics = MicroExtrinsics {
+                    timestamp: 0,
+                    seed,
+                    view_change_messages: view_messages,
+                    slash_inherents: Vec::new(),
+                    transactions: Vec::new(),
+                };
+
+                let digest = MicroDigest {
+                    validator: self.key_pair.public_key(),
+                    block_number,
+                    view_number: self.view_change_state.view_number,
+                };
+
+                let header = MicroHeader {
+                    parent_hash: previous_block.hash(),
+                    digest,
+                    extrinsics_root: extrinsics.hash(),
+                    state_root: Hash::default(), // TODO: Simulate stake.
+                };
+
+                let block = Block::Micro(MicroBlock {
+                    justification: self.key_pair.secret_key().sign(&header),
+                    header,
+                    extrinsics,
+                });
+
+                self.store_block(block.clone());
+                self.relay(Event::Block(block), &mut env);
+            },
+            BlockType::Macro => {
+                let digest = MacroDigest {
+                    validators: self.compute_validators(block_number, &seed),
+                    block_number,
+                    view_number: self.view_change_state.view_number,
+                    parent_macro_hash: self.chain.get(self.last_macro_block() as usize).map(|block| block.hash()).unwrap(),
+                };
+
+                let extrinsics = MacroExtrinsics {
+                    timestamp: 0,
+                    seed,
+                    view_change_messages: view_messages,
+                };
+
+                let header = MacroHeader {
+                    parent_hash: previous_block.hash(),
+                    digest,
+                    extrinsics_root: extrinsics.hash(),
+                    state_root: Hash::default(), // TODO: Simulate stake.
+                };
+
+                let signature = self.key_pair.secret_key().sign(&header);
+
+                let block = MacroBlock {
+                    header,
+                    extrinsics,
+                    justification: None,
+                };
+
+                self.multicast_to_validators(Event::BlockProposal(block, signature), &mut env);
+            },
+        }
     }
 
     /// Calculates the next block producer from the validator list.
@@ -429,15 +511,24 @@ impl HonestProtocol {
         // Last macro block is at block_number - (block_number % num_micro_blocks + 1)
         assert!(block_number > self.last_macro_block());
 
-        // TODO
-        unimplemented!()
+        let previous_block: &Block = self.chain.get(block_number as usize - 1).unwrap();
+
+        // H(S || i)
+        let r = Hasher::default()
+            .chain(&previous_block.seed().to_bytes())
+            .chain(&view_number.to_be_bytes())
+            .result();
+        let r: BigUint = BigUint::from_bytes_be(r.as_ref()) % self.validators.len();
+        let r = r.to_usize().unwrap();
+        self.validators[r].clone()
     }
 
-    fn relay(&self, event: Event, env: &mut Environment<Event, MetricsEventType>) {
-
+    fn relay(&self, event: Event, mut env: &mut Environment<Event, MetricsEventType>) {
+        env.broadcast(event);
     }
 
     fn multicast_to_validators(&self, event: Event, env: &mut Environment<Event, MetricsEventType>) {
-
+        // TODO: Only send to validators.
+        env.broadcast(event);
     }
 }

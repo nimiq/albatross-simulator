@@ -42,6 +42,20 @@ impl Block {
             Block::Micro(_) => BlockType::Micro,
         }
     }
+
+    pub fn seed(&self) -> &Signature<Seed> {
+        match self {
+            Block::Macro(ref block) => &block.extrinsics.seed,
+            Block::Micro(ref block) => &block.extrinsics.seed,
+        }
+    }
+
+    pub fn hash(&self) -> Hash {
+        match self {
+            Block::Macro(ref block) => block.header.hash(),
+            Block::Micro(ref block) => block.header.hash(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -142,6 +156,13 @@ pub struct MacroExtrinsics {
     pub view_change_messages: Option<ViewChangeProof>,
 }
 
+impl MacroExtrinsics {
+    pub fn hash(&self) -> Hash {
+        // TODO: Implement hash.
+        Hash::default()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct MicroExtrinsics {
     pub timestamp: u64,
@@ -149,6 +170,13 @@ pub struct MicroExtrinsics {
     pub view_change_messages: Option<ViewChangeProof>,
     pub slash_inherents: Vec<SlashInherent>,
     pub transactions: Vec<Transaction>,
+}
+
+impl MicroExtrinsics {
+    pub fn hash(&self) -> Hash {
+        // TODO: Implement hash.
+        Hash::default()
+    }
 }
 
 #[derive(Clone, Debug)]
