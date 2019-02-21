@@ -1,5 +1,7 @@
 use std::time::Duration;
+
 use crate::datastructures::block::Block;
+use crate::datastructures::block::MacroBlock;
 use crate::datastructures::block::MicroBlock;
 
 pub mod honest;
@@ -12,6 +14,10 @@ pub struct Timing {
 
 impl Timing {
     pub fn block_processing_time(&self, block: &Block) -> Duration {
+        Duration::default()
+    }
+
+    pub fn proposal_processing_time(&self, block: &MacroBlock) -> Duration {
         Duration::default()
     }
 }

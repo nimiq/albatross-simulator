@@ -7,16 +7,21 @@ use crate::actors::Timing;
 use crate::datastructures::block::Block;
 use crate::datastructures::block::BlockType;
 use crate::datastructures::block::MicroBlock;
-use crate::datastructures::pbft::ViewChange;
-use crate::datastructures::pbft::ViewChangeInternals;
+use crate::datastructures::pbft::{ViewChange, ViewChangeInternals, get_validators};
 use crate::datastructures::signature::{KeyPair, PublicKey, AggregatePublicKey};
 use crate::datastructures::slashing::SlashInherent;
 use crate::protocol::BlockError;
-use crate::protocol::macro_block::MacroBlockState;
-use crate::protocol::micro_block::MicroBlockError;
+use crate::protocol::macro_block::{MacroBlockState, MacroBlockPhase};
 use crate::protocol::ProtocolConfig;
 use crate::protocol::ViewChangeState;
 use crate::simulation::Event;
+use crate::datastructures::block::MacroBlock;
+use crate::datastructures::signature::Signature;
+use crate::datastructures::hash::Hash;
+use crate::datastructures::block::MacroHeader;
+use crate::datastructures::pbft::PbftProof;
+use crate::datastructures::pbft::PbftJustification;
+use crate::datastructures::pbft::AggregateProof;
 
 pub struct HonestProtocol {
     protocol_config: ProtocolConfig,
@@ -80,13 +85,21 @@ impl HonestProtocol {
 //            self.produce_block() TODO
         } else {
             // Set a timeout.
-            let delay = self.protocol_config.block_timeout * (self.view_change_state.view_number + 1).into();
-            env.schedule_self(Event::Timeout(self.next_block_number(), self.view_change_state.view_number), env.time() + delay);
+            match self.block_type_at(self.next_block_number()) {
+                BlockType::Micro => {
+                    let delay = self.protocol_config.micro_block_timeout * (self.view_change_state.view_number + 1).into();
+                    env.schedule_self(Event::MicroBlockTimeout(self.next_block_number(), self.view_change_state.view_number), env.time() + delay);
+                },
+                BlockType::Macro => {
+                    let delay = self.protocol_config.macro_block_timeout * (self.view_change_state.view_number + 1).into();
+                    env.schedule_self(Event::MacroBlockTimeout(self.next_block_number(), self.view_change_state.view_number, self.macro_block_state.phase), env.time() + delay);
+                },
+            }
         }
     }
 
     /// A block has been received, simulate processing.
-    fn received_block(&mut self, block: Block, mut env: Environment<Event, MetricsEventType>) {
+    fn received_block(&self, block: Block, mut env: Environment<Event, MetricsEventType>) {
         let processing_time = env.time() + self.timing.block_processing_time(&block);
         env.schedule_self(Event::BlockProcessed(block), processing_time);
     }
@@ -95,7 +108,7 @@ impl HonestProtocol {
     /// If it is invalid, ignore it.
     /// If it is valid, store block and reset state.
     fn processed_block(&mut self, block: Block, mut env: Environment<Event, MetricsEventType>) {
-        // We verify here already to allow for different processing times depending on the verification result.
+        // We verify the block.
         let result = self.verify_block(&block);
 
         // TODO: Handle slashing (we currently do not store the headers of known blocks).
@@ -151,8 +164,120 @@ impl HonestProtocol {
         if self.view_change_state.num_messages(self.view_change_state.view_number + 1) > self.protocol_config.two_third_threshold() {
             self.view_change_state.view_number += 1;
 
-            let delay = self.protocol_config.block_timeout * (self.view_change_state.view_number + 1).into();
-            env.schedule_self(Event::Timeout(self.next_block_number(), self.view_change_state.view_number), env.time() + delay);
+            let delay = self.protocol_config.micro_block_timeout * (self.view_change_state.view_number + 1).into();
+            env.schedule_self(Event::MicroBlockTimeout(self.next_block_number(), self.view_change_state.view_number), env.time() + delay);
+
+            // Also always make sure to reset the macro block state.
+            self.macro_block_state.reset();
+
+            self.prepare_next_block(env);
+        }
+    }
+
+    /// Handles a macro block proposal.
+    fn handle_macro_block_proposal(&mut self, proposal: MacroBlock, signature: Signature<MacroHeader>, mut env: Environment<Event, MetricsEventType>) {
+        let processing_time = env.time() + self.timing.proposal_processing_time(&proposal);
+        env.schedule_self(Event::ProposalProcessed(proposal, signature), processing_time);
+    }
+
+    /// A macro block proposal has been processed.
+    fn processed_proposal(&mut self, proposal: MacroBlock, signature: Signature<MacroHeader>, mut env: Environment<Event, MetricsEventType>) {
+        // We verify the proposal first.
+        let mut result = self.verify_macro_block(&proposal, true);
+
+        // Check block producer.
+        let public_key = self.get_producer_at(proposal.header.digest.block_number, proposal.header.digest.view_number);
+        if !signature.verify(&public_key,
+                             &proposal.header) {
+            result = Err(BlockError::InvalidBlockProducer);
+        }
+
+        if let Err(ref e) = result {
+            warn!("Got invalid block proposal, reason {:?}", e);
+        }
+
+        if result.is_ok() {
+            // Update state.
+            self.macro_block_state.proposal = Some(proposal.clone());
+            self.macro_block_state.phase = MacroBlockPhase::PROPOSED;
+
+            let hash = proposal.header.hash();
+            // Relay block.
+            self.relay(Event::BlockProposal(proposal, signature), &mut env);
+
+            // Send and process prepare message.
+            // FIXME: Currently prepare/commit signatures are identical in the simulation.
+            let prepare = PbftProof::new(&hash, &self.key_pair.secret_key());
+            self.multicast_to_validators(Event::BlockPrepare(prepare.clone()), &mut env);
+
+            self.handle_prepare(prepare, env);
+        } else {
+            // Ignore block.
+        }
+    }
+
+    /// Handles an incoming prepare message.
+    fn handle_prepare(&mut self, prepare: PbftProof, mut env: Environment<Event, MetricsEventType>) {
+        let hash;
+        if let Some(ref proposal) = self.macro_block_state.proposal {
+            // Verify prepare.
+            hash = proposal.header.hash();
+            if !prepare.verify(&hash) {
+                return;
+            }
+        } else {
+            // Ignore if we cannot verify.
+            return;
+        }
+
+        self.macro_block_state.add_prepare(prepare);
+
+        // When 2f + 1 prepare messages have been received, commit to proposal.
+        if self.macro_block_state.num_prepares() > self.protocol_config.two_third_threshold() {
+            self.macro_block_state.phase = MacroBlockPhase::PREPARED;
+
+            // Send and process prepare message.
+            // FIXME: Currently prepare/commit signatures are identical in the simulation.
+            let commit = PbftProof::new(&hash, &self.key_pair.secret_key());
+            self.multicast_to_validators(Event::BlockCommit(commit.clone()), &mut env);
+
+            self.handle_commit(commit, env);
+        }
+    }
+
+    /// Handles an incoming prepare message.
+    fn handle_commit(&mut self, commit: PbftProof, mut env: Environment<Event, MetricsEventType>) {
+        let hash;
+        if let Some(ref proposal) = self.macro_block_state.proposal {
+            // Verify prepare.
+            hash = proposal.header.hash();
+            if !commit.verify(&hash) {
+                return;
+            }
+        } else {
+            // Ignore if we cannot verify.
+            return;
+        }
+
+        self.macro_block_state.add_commit(commit);
+
+        // When 2f + 1 prepare messages have been received, commit to proposal.
+        if self.macro_block_state.num_commits() > self.protocol_config.two_third_threshold() {
+            self.macro_block_state.phase = MacroBlockPhase::COMMITTED;
+
+            // Block proposal accepted, build it and relay it.
+            let mut block = self.macro_block_state.proposal.take().unwrap();
+            block.justification = Some(PbftJustification {
+                prepare: AggregateProof::create(&self.macro_block_state.prepares, &self.validators),
+                commit: AggregateProof::create(&self.macro_block_state.commits, &self.validators),
+            });
+
+            let block = Block::Macro(block);
+
+            self.store_block(block.clone());
+
+            // Relay block.
+            self.relay(Event::Block(block), &mut env);
 
             self.prepare_next_block(env);
         }
@@ -161,28 +286,28 @@ impl HonestProtocol {
     /// Verifies a block of any type.
     fn verify_block(&self, block: &Block) -> Result<(), BlockError> {
         match block {
-            Block::Micro(ref micro_block) => self.verify_micro_block(micro_block).map_err(BlockError::Micro),
-            Block::Macro(ref macro_block) => Ok(()), // TODO
+            Block::Micro(ref micro_block) => self.verify_micro_block(micro_block),
+            Block::Macro(ref macro_block) => self.verify_macro_block(macro_block, false),
         }
     }
 
     /// Verifies the validity of a micro block.
-    fn verify_micro_block(&self, block: &MicroBlock) -> Result<(), MicroBlockError> {
+    fn verify_micro_block(&self, block: &MicroBlock) -> Result<(), BlockError> {
         let block_number = block.header.digest.block_number;
         // Check valid block number.
         if block_number > self.next_block_number()
             || block_number <= self.last_macro_block() {
-            return Err(MicroBlockError::InvalidBlockNumber);
+            return Err(BlockError::InvalidBlockNumber);
         }
 
         // Check correct type.
         if self.block_type_at(block_number) != BlockType::Micro {
-            return Err(MicroBlockError::InvalidBlockType);
+            return Err(BlockError::InvalidBlockType);
         }
 
         // Check Signature.
         if !block.justification.verify(&block.header.digest.validator, &block.header) {
-            return Err(MicroBlockError::InvalidSignature);
+            return Err(BlockError::InvalidSignature);
         }
 
         // Get potentially conflicting block.
@@ -191,13 +316,13 @@ impl HonestProtocol {
         // Check whether we committed not to accept blocks from this view change number.
         if block_number == self.next_block_number() {
             if block.header.digest.view_number < self.view_change_state.view_number {
-                return Err(MicroBlockError::OldViewChangeNumber);
+                return Err(BlockError::OldViewChangeNumber);
             }
         } else {
             let other = other.unwrap();
             match block.header.digest.view_number.cmp(&other.view_number()) {
                 Ordering::Less => {
-                    return Err(MicroBlockError::OldViewChangeNumber);
+                    return Err(BlockError::OldViewChangeNumber);
                 },
                 Ordering::Equal => {
                     // Easy slashing case.
@@ -205,7 +330,7 @@ impl HonestProtocol {
                         Block::Micro(other) => other,
                         _ => unreachable!(),
                     };
-                    return Err(MicroBlockError::MicroBlockFork(SlashInherent {
+                    return Err(BlockError::MicroBlockFork(SlashInherent {
                         header1: block.header.clone(),
                         justification1: block.justification.clone(),
                         header2: other_micro.header.clone(),
@@ -223,19 +348,14 @@ impl HonestProtocol {
                     block_number: block.header.digest.block_number,
                     new_view_number: block.header.digest.view_number,
                 };
-                let keys = self.get_validators(&view_change_proof.public_key_bitmap);
+                let keys = get_validators(&self.validators, &view_change_proof.public_key_bitmap);
                 let aggregate_key = AggregatePublicKey::from(keys);
                 if !view_change_proof.signatures.verify_single(&aggregate_key, &expected_message) {
-                    return Err(MicroBlockError::InvalidViewChangeMessages);
+                    return Err(BlockError::InvalidViewChangeMessages);
                 }
             } else {
-                return Err(MicroBlockError::MissingViewChangeMessages);
+                return Err(BlockError::MissingViewChangeMessages);
             }
-        }
-
-        // Check block producer.
-        if self.get_producer_at(block_number, block.header.digest.view_number) != block.header.digest.validator {
-            return Err(MicroBlockError::InvalidBlockProducer);
         }
 
         // TODO: Check timestamp.
@@ -247,14 +367,60 @@ impl HonestProtocol {
         Ok(())
     }
 
-    /// Return a set of public keys given to a bitmap.
-    /// We only need this for the current validator set, since macro blocks cannot be reverted.
-    fn get_validators(&self, bitmap: &[u16]) -> Vec<PublicKey> {
-        let mut keys = Vec::new();
-        for validator in bitmap.iter() {
-            keys.push(self.validators[usize::from(*validator)].clone());
+    /// Verifies the validity of a micro block.
+    fn verify_macro_block(&self, block: &MacroBlock, proposal: bool) -> Result<(), BlockError> {
+        let block_number = block.header.digest.block_number;
+        // Check valid block number.
+        if block_number != self.next_block_number() {
+            return Err(BlockError::InvalidBlockNumber);
         }
-        keys
+
+        // Check correct type.
+        if self.block_type_at(block_number) != BlockType::Macro {
+            return Err(BlockError::InvalidBlockType);
+        }
+
+        let hash = block.header.hash();
+
+        // Check Signature (if not a proposal).
+        match (proposal, &block.justification) {
+            (true, _) => {},
+            (false, Some(justification)) =>  {
+                if !justification.verify(&self.validators, &hash) {
+                    return Err(BlockError::InvalidSignature);
+                }
+            },
+            _ => {
+                return Err(BlockError::MissingJustification);
+            },
+        }
+
+        // Check whether we committed not to accept blocks from this view change number.
+        if block.header.digest.view_number < self.view_change_state.view_number {
+            return Err(BlockError::OldViewChangeNumber);
+        }
+
+        if block.header.digest.view_number > 0 {
+            // Verify aggregate view change signatures.
+            if let Some(ref view_change_proof) = block.extrinsics.view_change_messages {
+                let expected_message = ViewChangeInternals {
+                    block_number: block.header.digest.block_number,
+                    new_view_number: block.header.digest.view_number,
+                };
+                let keys = get_validators(&self.validators, &view_change_proof.public_key_bitmap);
+                let aggregate_key = AggregatePublicKey::from(keys);
+                if !view_change_proof.signatures.verify_single(&aggregate_key, &expected_message) {
+                    return Err(BlockError::InvalidViewChangeMessages);
+                }
+            } else {
+                return Err(BlockError::MissingViewChangeMessages);
+            }
+        }
+
+        // TODO: Check timestamp.
+        // TODO: Check Merkle hashes.
+
+        Ok(())
     }
 
     /// Calculates the next block producer from the validator list.

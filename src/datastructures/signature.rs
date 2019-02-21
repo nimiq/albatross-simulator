@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use crate::datastructures::hash::{Hash, Hasher};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Signature<M: Eq> {
     public_key: PublicKey,
     message: M,
@@ -99,6 +99,18 @@ impl From<Vec<PublicKey>> for AggregatePublicKey {
 #[derive(Clone, Debug)]
 pub struct AggregateSignature<M: Eq> {
     signatures: HashMap<PublicKey, Signature<M>>,
+}
+
+impl<M: Eq> From<Vec<Signature<M>>> for AggregateSignature<M> {
+    fn from(signatures: Vec<Signature<M>>) -> Self {
+        let mut aggregated_signatures = HashMap::with_capacity(signatures.len());
+        for signature in signatures {
+            aggregated_signatures.insert(signature.public_key.clone(), signature);
+        }
+        AggregateSignature {
+            signatures: aggregated_signatures,
+        }
+    }
 }
 
 impl<M: Eq> AggregateSignature<M> {

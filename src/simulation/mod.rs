@@ -1,6 +1,11 @@
 use crate::datastructures::block::Block;
-use crate::datastructures::transaction::Transaction;
+use crate::datastructures::block::MacroBlock;
+use crate::datastructures::block::MacroHeader;
+use crate::datastructures::pbft::PbftProof;
 use crate::datastructures::pbft::ViewChange;
+use crate::datastructures::signature::Signature;
+use crate::datastructures::transaction::Transaction;
+use crate::protocol::macro_block::MacroBlockPhase;
 
 #[derive(Clone, Debug)]
 pub enum Event {
@@ -10,15 +15,17 @@ pub enum Event {
 
     // PBFT.
     ViewChange(ViewChange),
-    BlockProposal(Block),
-    BlockPrepare,
-    BlockCommit,
+    BlockProposal(MacroBlock, Signature<MacroHeader>),
+    BlockPrepare(PbftProof),
+    BlockCommit(PbftProof),
 
     // Internal events.
     BlockProcessed(Block),
+    ProposalProcessed(MacroBlock, Signature<MacroHeader>),
     BlockProduced(Block),
     TransactionProcessed(Transaction),
-    Timeout(u32, u16),
+    MicroBlockTimeout(u32, u16),
+    MacroBlockTimeout(u32, u16, MacroBlockPhase),
 }
 
 pub struct SimulationConfig {

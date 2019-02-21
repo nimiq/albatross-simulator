@@ -5,6 +5,7 @@ use crate::datastructures::signature::PublicKey;
 use crate::datastructures::signature::Signature;
 use crate::datastructures::slashing::SlashInherent;
 use crate::datastructures::transaction::Transaction;
+use crate::datastructures::hash::Hasher;
 
 pub type Seed = Hash;
 
@@ -49,6 +50,15 @@ pub enum BlockHeader {
     Macro(MacroHeader),
 }
 
+impl BlockHeader {
+    pub fn hash(&self) -> Hash {
+        match self {
+            BlockHeader::Micro(ref header) => header.hash(),
+            BlockHeader::Macro(ref header) => header.hash(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct MacroDigest {
     pub validators: Vec<PublicKey>,
@@ -57,11 +67,34 @@ pub struct MacroDigest {
     pub view_number: u16,
 }
 
+impl MacroDigest {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut v = Vec::with_capacity(self.validators.len() * 4 + 32 + 8 + 4);
+        for validator in self.validators.iter() {
+            v.extend_from_slice(&validator.to_bytes());
+        }
+        v.extend_from_slice(self.parent_macro_hash.as_ref());
+        v.extend_from_slice(&self.block_number.to_be_bytes());
+        v.extend_from_slice(&self.view_number.to_be_bytes());
+        v
+    }
+}
+
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct MicroDigest {
     pub validator: PublicKey,
     pub block_number: u32,
     pub view_number: u16,
+}
+
+impl MicroDigest {
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut v = Vec::with_capacity(4 + 8 + 4);
+        v.extend_from_slice(&self.validator.to_bytes());
+        v.extend_from_slice(&self.block_number.to_be_bytes());
+        v.extend_from_slice(&self.view_number.to_be_bytes());
+        v
+    }
 }
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
@@ -72,12 +105,34 @@ pub struct MacroHeader {
     pub state_root: Hash,
 }
 
+impl MacroHeader {
+    pub fn hash(&self) -> Hash {
+        Hasher::default()
+            .chain(&self.parent_hash)
+            .chain(&self.digest.to_bytes())
+            .chain(&self.extrinsics_root)
+            .chain(&self.state_root)
+            .result()
+    }
+}
+
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
 pub struct MicroHeader {
     pub parent_hash: Hash,
     pub digest: MicroDigest,
     pub extrinsics_root: Hash,
     pub state_root: Hash,
+}
+
+impl MicroHeader {
+    pub fn hash(&self) -> Hash {
+        Hasher::default()
+            .chain(&self.parent_hash)
+            .chain(&self.digest.to_bytes())
+            .chain(&self.extrinsics_root)
+            .chain(&self.state_root)
+            .result()
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -100,7 +155,7 @@ pub struct MicroExtrinsics {
 pub struct MacroBlock {
     pub header: MacroHeader,
     pub extrinsics: MacroExtrinsics,
-    pub justification: PbftJustification,
+    pub justification: Option<PbftJustification>,
 
 }
 

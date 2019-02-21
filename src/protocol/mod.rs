@@ -3,29 +3,39 @@ use std::collections::HashSet;
 use std::time::Duration;
 
 use crate::datastructures::pbft::ViewChange;
-use crate::protocol::micro_block::MicroBlockError;
+use crate::datastructures::slashing::SlashInherent;
 
 pub mod macro_block;
-pub mod micro_block;
 pub mod honest_protocol;
 
 pub struct ProtocolConfig {
-    pub block_timeout: Duration,
+    pub micro_block_timeout: Duration,
+    pub macro_block_timeout: Duration,
     pub num_micro_blocks: u32,
     pub num_validators: u16,
 }
 
 impl ProtocolConfig {
+    fn max_malicious(&self) -> u16 {
+        (self.num_validators - 1) / 3
+    }
+
     pub fn two_third_threshold(&self) -> u16 {
-        // TODO
-        0
+        2 * self.max_malicious() + 1
     }
 }
 
 #[derive(Debug)]
 pub enum BlockError {
-    Micro(MicroBlockError),
-//    Macro(MacroBlockError),
+    InvalidBlockType,
+    InvalidBlockNumber,
+    InvalidBlockProducer,
+    InvalidSignature,
+    MissingViewChangeMessages,
+    InvalidViewChangeMessages,
+    OldViewChangeNumber,
+    MicroBlockFork(SlashInherent),
+    MissingJustification,
 }
 
 pub struct ViewChangeState {
