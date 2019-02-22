@@ -158,7 +158,7 @@ impl MicroHeader {
 
 impl fmt::Display for MicroHeader {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "block @ {} (view {}, type Micro)", self.digest.block_number, self.digest.view_number)
+        write!(f, "[#{} view {}, type Micro]", self.digest.block_number, self.digest.view_number)
     }
 }
 

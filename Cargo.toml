@@ -10,8 +10,10 @@ sha2 = "0.8"
 log = "0.4"
 num-bigint = "0.2"
 num-traits = "0.2"
-simple_logger = "1.0"
+fern = { version = "0.5", features = ["colored"] }
 hex = "0.3"
+colored = "1.7"
+chrono = "0.4"
 
 #[dependencies.bls]
 #git = "https://github.com/str4d/bls"

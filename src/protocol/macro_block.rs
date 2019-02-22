@@ -1,7 +1,6 @@
-use crate::datastructures::block::MacroBlock;
 use std::collections::HashSet;
-use crate::datastructures::signature::Signature;
-use crate::datastructures::hash::Hash;
+
+use crate::datastructures::block::MacroBlock;
 use crate::datastructures::pbft::PbftProof;
 
 #[derive(Debug, Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]

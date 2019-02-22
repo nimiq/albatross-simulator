@@ -1,11 +1,11 @@
 use std::cmp::Ordering;
 use std::collections::HashSet;
-use std::iter::FromIterator;
 
 use num_bigint::BigUint;
 use num_traits::ToPrimitive;
 
 use simulator::Environment;
+use simulator::metrics::Metrics;
 
 use crate::actors::Timing;
 use crate::datastructures::block::*;
@@ -68,8 +68,7 @@ impl HonestProtocol {
 
     /// Block type at a given number.
     fn block_type_at(&self, block_number: u32) -> BlockType {
-        let last_block = self.chain.last().expect("Empty chain");
-        if (last_block.block_number() + 1 /*next block*/) % (self.protocol_config.num_micro_blocks + 1 /*macro block*/) == 0 {
+        if (block_number + 1 /*next block*/) % (self.protocol_config.num_micro_blocks + 1 /*macro block*/) == 0 {
             BlockType::Macro
         } else {
             BlockType::Micro
@@ -310,7 +309,9 @@ impl HonestProtocol {
             self.store_block(block.clone());
 
             // Relay block.
-            self.relay(Event::Block(block), env);
+            self.relay(Event::Block(block.clone()), env);
+
+            env.note_event(&MetricsEventType::MacroBlockAccepted(block), env.time());
 
             self.prepare_next_block(env);
         }
@@ -460,7 +461,7 @@ impl HonestProtocol {
     }
 
     /// Calculates a new validator list.
-    fn compute_validators(&self, block_number: u32, seed: &Signature<Seed>) -> Vec<PublicKey> {
+    fn compute_validators(&self, _block_number: u32, _seed: &Signature<Seed>) -> Vec<PublicKey> {
         // TODO: Actually choose validators.
         self.validators.clone()
     }
@@ -572,7 +573,7 @@ impl HonestProtocol {
         self.validators[r].clone()
     }
 
-    fn relay(&self, event: Event, mut env: &mut Environment<Event, MetricsEventType>) {
+    fn relay(&self, event: Event, env: &mut Environment<Event, MetricsEventType>) {
         env.broadcast(event);
     }
 

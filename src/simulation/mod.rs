@@ -40,7 +40,7 @@ impl fmt::Display for Event {
         match self {
             // External events.
             Event::Block(block) => write!(f, "received block {}", block),
-            Event::Transaction(transaction) => write!(f, "received transaction"),
+            Event::Transaction(_transaction) => write!(f, "received transaction"),
 
             // PBFT.
             Event::ViewChange(view_change) => write!(f, "received view change {}", view_change),
@@ -51,9 +51,9 @@ impl fmt::Display for Event {
             // Internal events.
             Event::BlockProcessed(block) => write!(f, "processed block {}", block),
             Event::BlockProduced(block) => write!(f, "produced block {}", block),
-            Event::ProposalProcessed(block, signature) => write!(f, "processed proposal {}", block),
-            Event::TransactionProcessed(transaction) => write!(f, "processed transaction"),
-            Event::MicroBlockTimeout(block_number, view_number) | Event::MacroBlockTimeout(block_number, view_number, _) => write!(f, "timeout @ {} (view {})", block_number, view_number),
+            Event::ProposalProcessed(block, _signature) => write!(f, "processed proposal {}", block),
+            Event::TransactionProcessed(_transaction) => write!(f, "processed transaction"),
+            Event::MicroBlockTimeout(block_number, view_number) | Event::MacroBlockTimeout(block_number, view_number, _) => write!(f, "timeout [#{}, view {}]", block_number, view_number),
 
             Event::Init => write!(f, "initialised"),
         }

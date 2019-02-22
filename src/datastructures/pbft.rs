@@ -4,7 +4,6 @@ use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
 
-use crate::datastructures::block::MacroHeader;
 use crate::datastructures::hash::Hash as ShaHash;
 use crate::datastructures::signature::{AggregatePublicKey, PublicKey};
 use crate::datastructures::signature::AggregateSignature;

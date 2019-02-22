@@ -2,7 +2,6 @@ use simulator::Environment;
 use simulator::Event as SimulatorEvent;
 use simulator::metrics::Metrics;
 use simulator::Node;
-use simulator::Time;
 
 use crate::actors::Timing;
 use crate::datastructures::block::MacroBlock;
@@ -23,7 +22,7 @@ impl Node for HonestActor {
     type MetricsEventType = MetricsEventType;
 
     fn run(&mut self, event: SimulatorEvent<Self::EventType>, mut env: Environment<Self::EventType, Self::MetricsEventType>) -> bool {
-        env.note_event(&MetricsEventType {
+        env.note_event(&MetricsEventType::MessageEvent {
             own: env.own_id(),
             event: event.inner().clone(),
             from: event.from(),
@@ -32,7 +31,7 @@ impl Node for HonestActor {
         match event.inner() {
             // External events.
             Event::Block(block) => self.protocol.received_block(block.clone(), &mut env),
-            Event::Transaction(transaction) => (),
+            Event::Transaction(_transaction) => (),
 
             // PBFT.
             Event::ViewChange(view_change) => self.protocol.handle_view_change(view_change.clone(), &mut env),
@@ -44,7 +43,7 @@ impl Node for HonestActor {
             Event::BlockProcessed(block) => self.protocol.processed_block(block.clone(), &mut env),
             Event::BlockProduced(block) => self.protocol.produced_block(block.clone(), &mut env),
             Event::ProposalProcessed(block, signature) => self.protocol.processed_proposal(block.clone(), signature.clone(), &mut env),
-            Event::TransactionProcessed(transaction) => (),
+            Event::TransactionProcessed(_transaction) => (),
             Event::MicroBlockTimeout(block_number, view_number) | Event::MacroBlockTimeout(block_number, view_number, _) => self.protocol.handle_timeout(*block_number, *view_number, &mut env),
 
             Event::Init => self.protocol.prepare_next_block(&mut env),
