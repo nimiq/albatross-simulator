@@ -1,0 +1,9 @@
+[signatures]
+signing = 1489 # µs
+verification = 2884 # µs
+batch-verification = 1240 # µs per signature
+generate-aggregate-signature-same-message = 986 # µs per signature
+generate-aggregate-public-key = 189 # µs
+verify-aggregate-signature-same-message = 3 # µs
+generate-aggregate-signature-distinct-message = 167 # µs per signature
+verify-aggregate-signature-distinct-message = 1313 # µs

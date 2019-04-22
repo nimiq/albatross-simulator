@@ -1,7 +1,7 @@
 use crate::environment::Environment;
 use crate::event::Event;
 
-pub trait Node {
+pub trait Node: Send {
     type EventType;
     type MetricsEventType;
 

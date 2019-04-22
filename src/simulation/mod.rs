@@ -11,6 +11,8 @@ use crate::protocol::macro_block::MacroBlockPhase;
 
 pub mod metrics;
 pub mod network;
+pub mod settings;
+pub mod topology_helper;
 
 #[derive(Clone, Debug)]
 pub enum Event {
@@ -33,6 +35,12 @@ pub enum Event {
     MacroBlockTimeout(u32, u16, MacroBlockPhase),
 
     Init,
+}
+
+impl Event {
+    pub fn byte_size(&self) -> usize {
+        0
+    }
 }
 
 impl fmt::Display for Event {

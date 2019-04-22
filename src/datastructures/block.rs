@@ -1,12 +1,18 @@
+use std::collections::HashSet;
+use std::fmt;
+use std::time::Duration;
+
+use crate::actors::Timing;
+use crate::actors::VerificationTime;
 use crate::datastructures::hash::Hash;
+use crate::datastructures::hash::Hasher;
 use crate::datastructures::pbft::PbftJustification;
 use crate::datastructures::pbft::ViewChangeProof;
+use crate::datastructures::signature::KeyPair;
 use crate::datastructures::signature::PublicKey;
 use crate::datastructures::signature::Signature;
 use crate::datastructures::slashing::SlashInherent;
 use crate::datastructures::transaction::Transaction;
-use crate::datastructures::hash::Hasher;
-use std::fmt;
 
 pub type Seed = Hash;
 
@@ -199,6 +205,59 @@ pub struct MacroBlock {
     pub justification: Option<PbftJustification>,
 }
 
+impl MacroBlock {
+    pub fn create_genesis_block(validators: &HashSet<usize>) -> Self {
+        let digest = MacroDigest {
+            validators: validators.iter().map(|&i| KeyPair::from_id(i as u64).public_key()).collect(),
+            block_number: 0,
+            view_number: 0,
+            parent_macro_hash: Hash::default(),
+        };
+
+        let seed = KeyPair::from_id(0)
+            .secret_key()
+            .sign(&Hash::default());
+        let extrinsics = MacroExtrinsics {
+            timestamp: 0,
+            seed,
+            view_change_messages: None,
+        };
+
+        let header = MacroHeader {
+            parent_hash: Hash::default(),
+            digest,
+            extrinsics_root: extrinsics.hash(),
+            state_root: Hash::default(), // TODO: Simulate stake.
+        };
+
+        MacroBlock {
+            header,
+            extrinsics,
+            justification: None, // Only block without justification.
+        }
+    }
+
+    pub fn hash(&self) -> Hash {
+        self.header.hash()
+    }
+}
+
+impl VerificationTime for MacroBlock {
+    fn verification_time(&self, timing: &Timing) -> Duration {
+        let mut time = self.extrinsics.seed.verification_time(timing);
+
+        if let Some(ref proof) = self.extrinsics.view_change_messages {
+            time += proof.verification_time(timing);
+        }
+
+        if let Some(ref justification) = self.justification {
+            time += justification.verification_time(timing);
+        }
+
+        time
+    }
+}
+
 impl PartialEq for MacroBlock {
     fn eq(&self, other: &MacroBlock) -> bool {
         self.header == other.header
@@ -221,6 +280,23 @@ pub struct MicroBlock {
     pub header: MicroHeader,
     pub extrinsics: MicroExtrinsics,
     pub justification: Signature<MicroHeader>,
+}
+
+impl VerificationTime for MicroBlock {
+    fn verification_time(&self, timing: &Timing) -> Duration {
+        let mut time = self.extrinsics.seed.verification_time(timing)
+            + self.justification.verification_time(timing);
+
+        if let Some(ref proof) = self.extrinsics.view_change_messages {
+            time += proof.verification_time(timing);
+        }
+
+        // Batch verify transactions.
+        time += self.extrinsics.transactions.len() as u32 * timing.batch_verification;
+        time += self.extrinsics.slash_inherents.iter().map(|inherent| inherent.verification_time(timing)).sum();
+
+        time
+    }
 }
 
 impl PartialEq for MicroBlock {

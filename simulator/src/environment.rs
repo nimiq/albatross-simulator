@@ -48,7 +48,7 @@ impl<'a, E, ME> Environment<'a, E, ME> {
     /// The latency will be added automatically.
     /// Returns `true` on success and `false` on error (e.g. if no link has been found).
     pub fn schedule(&mut self, to: UniqueId, event: E, scheduled_send_time: Time) -> bool {
-        if let Some(delay) = self.network_config.transmission_delay(self.own_id, to, &event) {
+        if let Some(delay) = self.network_config.full_transmission_time(self.own_id, to, &event) {
             let e = Event::new(event,
                                scheduled_send_time + delay, self.own_id, to);
             self.queue.push(e);

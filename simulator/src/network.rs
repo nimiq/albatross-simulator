@@ -19,7 +19,7 @@ pub trait NetworkConfig {
     /// Links are not duplex by default!
     ///
     /// This is used to account for latency and transmission time.
-    fn transmission_delay(&self, from: UniqueId, to: UniqueId, event: &Self::EventType) -> Option<Duration>;
+    fn full_transmission_time(&self, from: UniqueId, to: UniqueId, event: &Self::EventType) -> Option<Duration>;
 
     /// Returns the behavior for a node.
     fn node(&self, id: UniqueId) -> Box<Node<EventType=Self::EventType, MetricsEventType=Self::MetricsEventType>>;

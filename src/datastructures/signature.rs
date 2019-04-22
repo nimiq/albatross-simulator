@@ -1,7 +1,10 @@
 use std::collections::HashMap;
-
-use crate::datastructures::hash::{Hash, Hasher};
 use std::fmt;
+use std::time::Duration;
+
+use crate::actors::Timing;
+use crate::actors::VerificationTime;
+use crate::datastructures::hash::{Hash, Hasher};
 
 #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq, Hash)]
 pub struct Signature<M: Eq> {
@@ -33,6 +36,12 @@ impl<M: Eq + AsRef<[u8]>> Signature<M> {
 impl<M: Eq> fmt::Display for Signature<M> {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
         write!(f, "Signature({})", self.public_key)
+    }
+}
+
+impl<M: Eq> VerificationTime for Signature<M> {
+    fn verification_time(&self, timing: &Timing) -> Duration {
+        timing.verification
     }
 }
 
@@ -116,6 +125,17 @@ impl From<Vec<PublicKey>> for AggregatePublicKey {
 #[derive(Clone, Debug)]
 pub struct AggregateSignature<M: Eq> {
     signatures: HashMap<PublicKey, Signature<M>>,
+}
+
+impl<M: Eq> VerificationTime for AggregateSignature<M> {
+    fn verification_time(&self, timing: &Timing) -> Duration {
+        let msg = self.signatures.values().next().map(|signature| &signature.message);
+        if self.signatures.values().all(|signature| Some(&signature.message) == msg) {
+            self.signatures.len() as u32 * timing.verify_aggregate_signature_same_message
+        } else {
+            self.signatures.len() as u32 * timing.verify_aggregate_signature_distinct_message
+        }
+    }
 }
 
 impl<M: Eq> From<Vec<Signature<M>>> for AggregateSignature<M> {

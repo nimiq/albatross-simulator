@@ -1,98 +1,109 @@
 #[macro_use]
 extern crate log;
+#[macro_use]
+extern crate serde_derive;
 
 use std::io;
 use std::time::Duration;
 
+use futures::future::{join_all, lazy, ok};
+use futures::prelude::*;
 use log::LevelFilter;
+use rand::rngs::OsRng;
 
 use simulator::Simulator;
 
 use crate::actors::Timing;
-use crate::datastructures::block::MacroBlock;
-use crate::datastructures::block::MacroDigest;
-use crate::datastructures::block::MacroExtrinsics;
-use crate::datastructures::block::MacroHeader;
-use crate::datastructures::hash::Hash;
-use crate::datastructures::signature::KeyPair;
+use crate::cmdline::Options;
 use crate::logging::AlbatrossDispatch;
 use crate::protocol::ProtocolConfig;
 use crate::simulation::Event;
 use crate::simulation::metrics::DefaultMetrics;
-use crate::simulation::network::SimpleNetwork;
+use crate::simulation::network::AdvancedNetwork;
+use crate::simulation::settings::ProtocolSettings;
+use crate::simulation::settings::Settings;
+use crate::simulation::settings::TimingSettings;
 use crate::simulation::SimulationConfig;
+use crate::simulation::topology_helper::AdvancedTopologyHelper;
 
 pub mod datastructures;
 pub mod protocol;
 pub mod actors;
 pub mod simulation;
 pub mod logging;
+pub mod distributions;
+pub mod cmdline;
 
 fn main() {
+    let options = Options::parse().unwrap();
+
     // Setup logging.
-    fern::Dispatch::new()
-        .pretty_logging(false)
-        .level(LevelFilter::Info)
-        .chain(io::stdout())
-        .apply().unwrap();
+    let mut dispatch = fern::Dispatch::new()
+        .pretty_logging(true)
+        .chain(
+            fern::Dispatch::new()
+                .level(LevelFilter::Debug)
+                .chain(io::stdout())
+        );
 
-    let num_nodes = 3usize;
-    let delay = Duration::from_millis(500);
-    let simulation_config = SimulationConfig {
-        blocks: 50,
-    };
-    let protocol_config = ProtocolConfig {
-        micro_block_timeout: Duration::from_secs(2),
-        macro_block_timeout: Duration::from_secs(4),
-        num_micro_blocks: 4,
-        num_validators: num_nodes as u16,
-    };
-    let timing = Timing {
-        signature_verification: Duration::default(),
-    };
+    if let Some(ref trace_file) = options.trace_file {
+        dispatch = dispatch.chain(
+            fern::Dispatch::new()
+                .level(LevelFilter::Trace)
+                .chain(fern::log_file(trace_file.clone()).unwrap())
+        );
+    }
 
-    // Create genesis block.
-    let digest = MacroDigest {
-        validators: (0..num_nodes).map(|i| KeyPair::from_id(i as u64).public_key()).collect(),
-        block_number: 0,
-        view_number: 0,
-        parent_macro_hash: Hash::default(),
-    };
+    dispatch.apply().unwrap();
 
-    let seed = KeyPair::from_id(num_nodes as u64)
-        .secret_key()
-        .sign(&Hash::default());
-    let extrinsics = MacroExtrinsics {
-        timestamp: 0,
-        seed,
-        view_change_messages: None,
-    };
+    tokio::run(lazy(|| {
+        start_simulations(options);
+        ok(())
+    }))
+}
 
-    let header = MacroHeader {
-        parent_hash: Hash::default(),
-        digest,
-        extrinsics_root: extrinsics.hash(),
-        state_root: Hash::default(), // TODO: Simulate stake.
-    };
+fn start_simulations(options: Options) {
+    let mut settings = Settings::from_file(options.network_settings.unwrap()).unwrap();
+    let timing = Timing::from_settings(TimingSettings::from_file(options.timing_settings.unwrap()).unwrap());
+    let protocol = ProtocolSettings::from_file(options.protocol_settings.unwrap()).unwrap();
+    let topology = AdvancedTopologyHelper::from_settings(&mut settings).unwrap();
 
-    let genesis_block = MacroBlock {
-        header,
-        extrinsics,
-        justification: None, // Only block without justification.
-    };
+    // Sequentially run simulations.
+    for &num_nodes in options.num_nodes.iter() {
+        let mut iterations = Vec::with_capacity(options.iterations);
+        for _ in 0..options.iterations {
+            let simulation_config = SimulationConfig {
+                blocks: options.blocks,
+            };
+            let protocol_config = ProtocolConfig {
+                micro_block_timeout: options.micro_block_timeout.unwrap_or(Duration::from_micros(protocol.micro_block_timeout)),
+                macro_block_timeout: options.micro_block_timeout.unwrap_or(Duration::from_micros(protocol.micro_block_timeout)),
+                num_micro_blocks: options.num_micro_blocks.unwrap_or(protocol.num_micro_blocks),
+                num_validators: num_nodes as u16,
+            };
 
+            iterations.push(run_simulation(num_nodes, &topology, simulation_config, protocol_config, timing.clone()).map(|simulator| {
+                simulator.metrics().analyze()
+            }));
+        }
+        tokio::spawn(join_all(iterations).map(|_| ()));
+    }
+}
+
+fn run_simulation(num_nodes: usize, topology: &AdvancedTopologyHelper, simulation_config: SimulationConfig, protocol_config: ProtocolConfig, timing: Timing) -> impl Future<Item=Simulator<AdvancedNetwork, DefaultMetrics>, Error=()> {
     info!("Simulating {} parties Albatross!", num_nodes);
-    debug!("Delay: {:#?}", delay);
     debug!("Simulation: {:#?}", simulation_config);
     debug!("Protocol: {:#?}", protocol_config);
     debug!("Timing: {:#?}", timing);
-    debug!("Genesis block: {:#?}", genesis_block);
 
     let metrics = DefaultMetrics::default();
-    // Setting this to true will cause the program to take much longer with the same result.
-    let network = SimpleNetwork::new(num_nodes, delay,
-                                         simulation_config, protocol_config,
-                                         timing, genesis_block);
+
+    info!("Creating network topology distributions.");
+
+    let mut rng = OsRng::new().unwrap();
+    info!("Setting up network.");
+    let network = AdvancedNetwork::new(num_nodes, &topology, simulation_config,
+                                       protocol_config, timing, &mut rng);
 
     let mut simulator = Simulator::new(network, metrics);
 
@@ -102,9 +113,10 @@ fn main() {
         simulator.initial_event(i, Event::Init);
     }
 
-    simulator.run();
-
-    info!("Simulation ended, analyzing metrics.");
-
-    simulator.metrics().analyze();
+    IntoFuture::into_future(simulator).map(|simulator| {
+        info!("Simulation ended, analyzing metrics.");
+        simulator
+    }).map_err(|_| {
+        info!("Simulation ended with error.");
+    })
 }

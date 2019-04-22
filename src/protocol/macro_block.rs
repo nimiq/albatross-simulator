@@ -25,12 +25,20 @@ impl MacroBlockState {
         self.prepares.insert(prepare);
     }
 
+    pub fn has_prepare(&mut self, prepare: &PbftProof) -> bool {
+        self.prepares.contains(prepare)
+    }
+
     pub fn num_prepares(&self) -> u16 {
         self.prepares.len() as u16
     }
 
     pub fn add_commit(&mut self, prepare: PbftProof) {
         self.commits.insert(prepare);
+    }
+
+    pub fn has_commit(&mut self, prepare: &PbftProof) -> bool {
+        self.commits.contains(prepare)
     }
 
     pub fn num_commits(&self) -> u16 {

@@ -137,7 +137,7 @@ impl NetworkConfig for Network {
         Cow::Borrowed(&self.adjacency[from])
     }
 
-    fn transmission_delay(&self, from: usize, to: usize, _event: &PingPongEvent) -> Option<Duration> {
+    fn full_transmission_time(&self, from: usize, to: usize, _event: &PingPongEvent) -> Option<Duration> {
         self.network.get(from)?.get(to)?.map(Duration::from_millis)
     }
 

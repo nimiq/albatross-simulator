@@ -1,5 +1,10 @@
 use std::collections::binary_heap::BinaryHeap;
 
+use futures::Async;
+use futures::Future;
+use futures::IntoFuture;
+use futures::Stream;
+
 use crate::environment::Environment;
 use crate::Event;
 use crate::metrics::Metrics;
@@ -85,5 +90,82 @@ impl<N: NetworkConfig, M: Metrics<EventType=N::MetricsEventType>> Simulator<N, M
     /// Returns the start time of the simulation.
     pub fn initial_time(&self) -> Time {
         self.initial_time
+    }
+}
+
+impl<N: NetworkConfig, M: Metrics<EventType=N::MetricsEventType>> IntoFuture for Simulator<N, M> {
+    type Future = Simulation<N, M>;
+    type Item = Self;
+    type Error = ();
+
+    /// Transforms the simulator into a future that returns the simulator again upon successful completion.
+    fn into_future(mut self) -> Self::Future {
+        // Build first if nodes are empty.
+        if self.nodes.is_empty() {
+            self.build();
+        }
+
+        Simulation {
+            simulator: Some(self),
+        }
+    }
+}
+
+pub struct Simulation<N: NetworkConfig, M: Metrics<EventType=N::MetricsEventType>> {
+    simulator: Option<Simulator<N, M>>,
+}
+
+impl<N: NetworkConfig, M: Metrics<EventType=N::MetricsEventType>> Future for Simulation<N, M> {
+    type Item = Simulator<N, M>;
+    type Error = ();
+
+    /// Runs the stream to completion and returns the simulator again.
+    fn poll(&mut self) -> Result<Async<Self::Item>, Self::Error> {
+        if let Some(ref mut simulator) = self.simulator {
+            loop {
+                match try_ready!(simulator.poll()) {
+                    Some(_) => (),
+                    None => break,
+                }
+            }
+        }
+
+        match self.simulator.take() {
+            Some(simulator) => return Ok(Async::Ready(simulator)),
+            None => return Err(()),
+        }
+    }
+}
+
+impl<N: NetworkConfig, M: Metrics<EventType=N::MetricsEventType>> Stream for Simulator<N, M> {
+    type Item = ();
+    type Error = ();
+
+    /// This stream returns one () per event processed.
+    fn poll(&mut self) -> Result<Async<Option<Self::Item>>, Self::Error> {
+        // Build first if nodes are empty.
+        if self.nodes.is_empty() {
+            self.build();
+        }
+
+        match self.queue.pop() {
+            None => Ok(Async::Ready(None)),
+            Some(event) => {
+                if let Some(recipient) = self.nodes.get_mut(event.to) {
+                    let env = Environment::new(event.to,
+                                               &self.network_config,
+                                               event.receive_time(),
+                                               &mut self.queue,
+                                               &mut self.metrics);
+                    if !recipient.run(event, env) {
+                        Ok(Async::Ready(None))
+                    } else {
+                        Ok(Async::Ready(Some(())))
+                    }
+                } else {
+                    Err(())
+                }
+            },
+        }
     }
 }

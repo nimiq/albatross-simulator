@@ -1,5 +1,7 @@
 use std::cmp::Ordering;
 use std::collections::HashSet;
+use std::fmt;
+use std::fmt::Debug;
 
 use num_bigint::BigUint;
 use num_traits::ToPrimitive;
@@ -68,7 +70,7 @@ impl HonestProtocol {
 
     /// Block type at a given number.
     fn block_type_at(&self, block_number: u32) -> BlockType {
-        if (block_number + 1 /*next block*/) % (self.protocol_config.num_micro_blocks + 1 /*macro block*/) == 0 {
+        if block_number % (self.protocol_config.num_micro_blocks + 1 /*macro block*/) == 0 {
             BlockType::Macro
         } else {
             BlockType::Micro
@@ -203,6 +205,13 @@ impl HonestProtocol {
 
     /// Handles a macro block proposal.
     pub fn handle_macro_block_proposal(&mut self, proposal: MacroBlock, signature: Signature<MacroHeader>, env: &mut Environment<Event, MetricsEventType>) {
+        // Check whether we already received this block.
+        let hash = proposal.hash();
+        if self.known_blocks.contains(&hash) {
+            return;
+        }
+        self.known_blocks.insert(hash);
+
         let processing_time = env.time() + self.timing.proposal_processing_time(&proposal);
         env.schedule_self(Event::ProposalProcessed(proposal, signature), processing_time);
     }
@@ -262,6 +271,10 @@ impl HonestProtocol {
             return;
         }
 
+        if self.macro_block_state.has_prepare(&prepare) {
+            return;
+        }
+
         self.macro_block_state.add_prepare(prepare);
 
         // When 2f + 1 prepare messages have been received, commit to proposal.
@@ -291,6 +304,10 @@ impl HonestProtocol {
             return;
         }
 
+        if self.macro_block_state.has_commit(&commit) {
+            return;
+        }
+
         self.macro_block_state.add_commit(commit);
 
         // When 2f + 1 prepare messages have been received, commit to proposal.
@@ -307,6 +324,8 @@ impl HonestProtocol {
             let block = Block::Macro(block);
 
             self.store_block(block.clone());
+            // We accepted the block.
+            self.macro_block_state.proposal = None;
 
             // Relay block.
             self.relay(Event::Block(block.clone()), env);
@@ -559,7 +578,7 @@ impl HonestProtocol {
     fn get_producer_at(&self, block_number: u32, view_number: u16) -> PublicKey {
         // The block must not be before the last macro block.
         // Last macro block is at block_number - (block_number % num_micro_blocks + 1)
-        assert!(block_number > self.last_macro_block());
+        assert!(block_number > self.last_macro_block(), "Block {} is from before last macro block ({}), state: {:?}", block_number, self.last_macro_block(), self);
 
         let previous_block: &Block = self.chain.get(block_number as usize - 1).unwrap();
 
@@ -580,5 +599,15 @@ impl HonestProtocol {
     fn multicast_to_validators(&self, event: Event, env: &mut Environment<Event, MetricsEventType>) {
         // TODO: Only send to validators.
         env.broadcast(event);
+    }
+}
+
+impl Debug for HonestProtocol {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        writeln!(f, "HonestProtocol {{")?;
+        writeln!(f, "  key_pair: {:?},", self.key_pair)?;
+        writeln!(f, "  head_number: {},", self.current_block_number())?;
+        writeln!(f, "  head: {:?},", self.chain.last().unwrap())?;
+        writeln!(f, "}}")
     }
 }

@@ -3,7 +3,10 @@ use std::collections::HashSet;
 use std::fmt;
 use std::hash::Hash;
 use std::hash::Hasher;
+use std::time::Duration;
 
+use crate::actors::Timing;
+use crate::actors::VerificationTime;
 use crate::datastructures::hash::Hash as ShaHash;
 use crate::datastructures::signature::{AggregatePublicKey, PublicKey};
 use crate::datastructures::signature::AggregateSignature;
@@ -28,6 +31,12 @@ impl PbftJustification {
     }
 }
 
+impl VerificationTime for PbftJustification {
+    fn verification_time(&self, timing: &Timing) -> Duration {
+        self.prepare.verification_time(timing) + self.commit.verification_time(timing)
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PbftProof {
     pub signature: Signature<ShaHash>,
@@ -44,6 +53,12 @@ impl PbftProof {
 
     pub fn verify(&self, hash: &ShaHash) -> bool {
         self.signature.verify(&self.id, &hash)
+    }
+}
+
+impl VerificationTime for PbftProof {
+    fn verification_time(&self, timing: &Timing) -> Duration {
+        self.signature.verification_time(timing)
     }
 }
 
@@ -160,6 +175,12 @@ impl AggregateProof<ShaHash> {
             signatures: AggregateSignature::from(signatures),
             public_key_bitmap: key_bitmap,
         }
+    }
+}
+
+impl<T: Eq> VerificationTime for AggregateProof<T> {
+    fn verification_time(&self, timing: &Timing) -> Duration {
+        self.signatures.verification_time(timing) + self.public_key_bitmap.len() as u32 * timing.generate_aggregate_public_key
     }
 }
 
