@@ -77,7 +77,7 @@ fn start_simulations(options: Options) {
             };
             let protocol_config = ProtocolConfig {
                 micro_block_timeout: options.micro_block_timeout.unwrap_or(Duration::from_micros(protocol.micro_block_timeout)),
-                macro_block_timeout: options.micro_block_timeout.unwrap_or(Duration::from_micros(protocol.micro_block_timeout)),
+                macro_block_timeout: options.macro_block_timeout.unwrap_or(Duration::from_micros(protocol.macro_block_timeout)),
                 num_micro_blocks: options.num_micro_blocks.unwrap_or(protocol.num_micro_blocks),
                 num_validators: num_nodes as u16,
             };
